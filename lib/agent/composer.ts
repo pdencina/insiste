@@ -15,7 +15,7 @@
  * - Máximo 5 líneas
  */
 
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export interface ComposerInput {
   asunto: string;
@@ -56,28 +56,29 @@ El escalón 4 es el más efectivo. Dar salida al otro suele destrabar la respues
 Responde SOLO con el texto del correo, nada más.`;
 
 /**
- * Redacta un recordatorio usando Claude.
+ * Redacta un recordatorio usando Google Gemini.
  */
 export async function redactarRecordatorio(
   input: ComposerInput
 ): Promise<ComposerResult> {
-  const anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("Falta la variable de entorno GEMINI_API_KEY");
+  }
 
-  const model = "claude-sonnet-4-20250514";
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = "gemini-2.0-flash";
+
+  const generativeModel = genAI.getGenerativeModel({
+    model,
+    systemInstruction: SYSTEM_PROMPT,
+  });
 
   const userPrompt = buildComposerPrompt(input);
 
-  const response = await anthropic.messages.create({
-    model,
-    max_tokens: 300,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userPrompt }],
-  });
-
-  const cuerpo =
-    response.content[0].type === "text" ? response.content[0].text.trim() : "";
+  const result = await generativeModel.generateContent(userPrompt);
+  const response = result.response;
+  const cuerpo = response.text().trim();
 
   return {
     cuerpo,

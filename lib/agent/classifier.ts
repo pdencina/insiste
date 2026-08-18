@@ -1,5 +1,5 @@
 /**
- * Clasificador de respuestas entrantes usando Claude.
+ * Clasificador de respuestas entrantes usando Google Gemini.
  *
  * Recibe el objetivo del seguimiento y el texto del último mensaje.
  * Devuelve una clasificación JSON estricta validada con Zod.
@@ -7,7 +7,7 @@
  * Si confianza < 0.75, no se toma acción automática.
  */
 
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { z } from "zod";
 import type { ClaseRespuesta } from "@/lib/supabase/types";
 
@@ -59,31 +59,35 @@ Reglas:
 - Un simple "ok" o "recibido" sin entregar lo pedido es "irrelevante" salvo que lo pedido fuera una confirmación.
 - Sé conservador con la confianza. Si no estás seguro, baja el valor.
 
-Responde ÚNICAMENTE con JSON válido, sin texto adicional.`;
+Responde ÚNICAMENTE con JSON válido, sin texto adicional ni markdown.`;
 
 /**
- * Clasifica un mensaje entrante usando Claude.
+ * Clasifica un mensaje entrante usando Google Gemini.
  */
 export async function clasificarMensaje(
   input: ClassifierInput
 ): Promise<ClassifierResult> {
-  const anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("Falta la variable de entorno GEMINI_API_KEY");
+  }
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = "gemini-2.0-flash";
+
+  const generativeModel = genAI.getGenerativeModel({
+    model,
+    systemInstruction: SYSTEM_PROMPT,
+    generationConfig: {
+      responseMimeType: "application/json",
+    },
   });
 
   const userPrompt = buildUserPrompt(input);
-  const model = "claude-sonnet-4-20250514";
 
-  const response = await anthropic.messages.create({
-    model,
-    max_tokens: 256,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userPrompt }],
-  });
-
-  // Extraer texto de la respuesta
-  const text =
-    response.content[0].type === "text" ? response.content[0].text : "";
+  const result = await generativeModel.generateContent(userPrompt);
+  const response = result.response;
+  const text = response.text();
 
   // Parsear y validar con Zod
   let parsed: ClasificacionLLM;
