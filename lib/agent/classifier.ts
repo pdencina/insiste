@@ -72,7 +72,7 @@ export async function clasificarMensaje(
   });
 
   const userPrompt = buildUserPrompt(input);
-  const model = "claude-3-5-sonnet-20241022";
+  const model = "claude-sonnet-4-20250514";
 
   const response = await anthropic.messages.create({
     model,
