@@ -72,11 +72,16 @@ export async function getGmailClient(cuentaId: string): Promise<gmail_v1.Gmail> 
 
   const oauth2Client = createOAuth2Client();
 
-  // Descifrar el refresh token (en fase 1 se guarda como texto base64 en bytea)
-  const refreshToken = Buffer.from(
-    cuenta.refresh_token_cifrado,
-    "base64"
-  ).toString("utf-8");
+  // Descifrar el refresh token
+  // Supabase devuelve bytea como base64 del contenido binario.
+  // El contenido binario es el refresh token en UTF-8.
+  let refreshToken: string;
+  try {
+    refreshToken = Buffer.from(cuenta.refresh_token_cifrado, "base64").toString("utf-8");
+  } catch {
+    // Fallback: intentar leer como string directo
+    refreshToken = String(cuenta.refresh_token_cifrado);
+  }
 
   oauth2Client.setCredentials({ refresh_token: refreshToken });
 

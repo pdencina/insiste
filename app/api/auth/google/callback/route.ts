@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
       {
         user_id: userId,
         email,
-        refresh_token_cifrado: `\\x${Buffer.from(tokens.refresh_token, "utf-8").toString("hex")}`,
+        refresh_token_cifrado: Buffer.from(tokens.refresh_token, "utf-8").toString("base64"),
         access_token: tokens.access_token,
         access_expira_en: tokens.expiry_date
           ? new Date(tokens.expiry_date).toISOString()
