@@ -25,15 +25,20 @@ export async function GET(request: NextRequest) {
   const supabase = createServiceClient();
 
   try {
+    const force = request.nextUrl.searchParams.get("force") === "true";
     const ahora = new Date().toISOString();
 
-    // Seguimientos activos con próximo_intento vencido
-    const { data: seguimientos } = await supabase
+    // Seguimientos activos con próximo_intento vencido (o todos si force=true)
+    let query = supabase
       .from("seguimientos")
       .select("*")
-      .eq("estado", "activo")
-      .lte("proximo_intento", ahora)
-      .not("proximo_intento", "is", null);
+      .eq("estado", "activo");
+
+    if (!force) {
+      query = query.lte("proximo_intento", ahora).not("proximo_intento", "is", null);
+    }
+
+    const { data: seguimientos } = await query;
 
     if (!seguimientos || seguimientos.length === 0) {
       return NextResponse.json({ ok: true, enviados: 0, borradores: 0 });
