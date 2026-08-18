@@ -73,7 +73,7 @@ export async function clasificarMensaje(
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = "gemini-2.0-flash";
+  const model = "gemini-3.6-flash";
 
   const generativeModel = genAI.getGenerativeModel({
     model,
