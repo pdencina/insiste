@@ -65,7 +65,7 @@ export async function redactarRecordatorio(
     apiKey: process.env.ANTHROPIC_API_KEY,
   });
 
-  const model = "claude-sonnet-4-20250514";
+  const model = "claude-3-5-sonnet-20241022";
 
   const userPrompt = buildComposerPrompt(input);
 
