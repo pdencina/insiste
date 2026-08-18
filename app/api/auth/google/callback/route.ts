@@ -48,21 +48,40 @@ export async function GET(request: NextRequest) {
     // 3. Guardar en Supabase
     const supabase = createServiceClient();
 
-    // Cifrar refresh token (fase 1: base64 simple, fase 2: pgcrypto)
-    const refreshTokenCifrado = Buffer.from(
-      tokens.refresh_token,
-      "utf-8"
-    ).toString("base64");
+    // Crear o recuperar usuario en Supabase Auth (para mantener FK y RLS)
+    let userId: string;
 
-    // TODO: Obtener user_id del contexto de auth de Supabase
-    // Por ahora usar un placeholder — en producción viene de la sesión
-    const userId = "00000000-0000-0000-0000-000000000000";
+    // Buscar si ya existe un usuario con este email
+    const { data: existingUsers } = await supabase.auth.admin.listUsers();
+    const existingUser = existingUsers?.users?.find(
+      (u) => u.email === email
+    );
+
+    if (existingUser) {
+      userId = existingUser.id;
+    } else {
+      // Crear usuario con contraseña random (login real es via Google OAuth)
+      const { data: newUser, error: authError } =
+        await supabase.auth.admin.createUser({
+          email,
+          email_confirm: true,
+          password: crypto.randomUUID(), // no se usa, auth es via Google
+        });
+
+      if (authError || !newUser.user) {
+        console.error("Error creando usuario en Supabase Auth:", authError);
+        return NextResponse.redirect(
+          new URL("/?error=auth_create_failed", request.url)
+        );
+      }
+      userId = newUser.user.id;
+    }
 
     const { error: dbError } = await supabase.from("cuentas").upsert(
       {
         user_id: userId,
         email,
-        refresh_token_cifrado: refreshTokenCifrado,
+        refresh_token_cifrado: `\\x${Buffer.from(tokens.refresh_token, "utf-8").toString("hex")}`,
         access_token: tokens.access_token,
         access_expira_en: tokens.expiry_date
           ? new Date(tokens.expiry_date).toISOString()
