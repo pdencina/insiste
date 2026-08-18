@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
     let borradores = 0;
     let bloqueados = 0;
     let errores = 0;
+    const erroresDetalle: string[] = [];
 
     for (const seg of seguimientos) {
       try {
@@ -57,6 +58,7 @@ export async function GET(request: NextRequest) {
         else if (resultado === "bloqueado") bloqueados++;
       } catch (err) {
         console.error(`Error enviando para ${seg.id}:`, err);
+        erroresDetalle.push(`${seg.id}: ${String(err)}`);
         errores++;
       }
     }
@@ -67,6 +69,7 @@ export async function GET(request: NextRequest) {
       borradores,
       bloqueados,
       errores,
+      erroresDetalle: erroresDetalle.length > 0 ? erroresDetalle : undefined,
       total: seguimientos.length,
     });
   } catch (err) {
