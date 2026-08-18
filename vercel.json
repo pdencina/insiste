@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sincronizar",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/captar",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/enviar",
+      "schedule": "*/30 * * * *"
+    }
+  ]
+}
