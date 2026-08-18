@@ -2,9 +2,10 @@
  * Gestión de etiquetas de Insiste en Gmail.
  *
  * Etiquetas:
- * - insiste/seguir   → El usuario marca un hilo para seguimiento
- * - insiste/activo   → El agente está vigilando este hilo
- * - insiste/cerrado  → El seguimiento terminó
+ * - insiste/seguir    → El usuario marca un hilo para seguimiento (recordatorios)
+ * - insiste/activo    → El agente está vigilando este hilo
+ * - insiste/cerrado   → El seguimiento terminó
+ * - insiste/responder → El usuario quiere que el agente redacte una respuesta
  */
 
 import type { gmail_v1 } from "googleapis";
@@ -14,6 +15,7 @@ export const LABEL_NAMES = {
   SEGUIR: "insiste/seguir",
   ACTIVO: "insiste/activo",
   CERRADO: "insiste/cerrado",
+  RESPONDER: "insiste/responder",
 } as const;
 
 type LabelName = (typeof LABEL_NAMES)[keyof typeof LABEL_NAMES];
