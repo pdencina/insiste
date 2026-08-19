@@ -167,6 +167,15 @@ export default function Panel() {
         <NavItem active={tab === "borradores"} onClick={() => setTab("borradores")} icon="📝" label="Borradores" />
         <NavItem active={tab === "seguimientos"} onClick={() => setTab("seguimientos")} icon="🔄" label="Seguimientos" />
         <NavItem active={tab === "config"} onClick={() => setTab("config")} icon="⚙️" label="Config" />
+        <div className="mt-auto pt-4 border-t border-[var(--border)]">
+          <a
+            href="/api/auth/login"
+            className="flex items-center gap-3 px-3 py-2 rounded text-sm text-[var(--muted)] hover:text-white hover:bg-[var(--card-hover)] transition-colors"
+          >
+            <span>🔗</span>
+            <span>Conectar Gmail</span>
+          </a>
+        </div>
       </nav>
 
       {/* Main content */}
