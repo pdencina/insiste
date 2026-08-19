@@ -326,34 +326,185 @@ function SeguimientosView({ seguimientos, onAction, onRefresh }: { seguimientos:
 }
 
 function ConfigView() {
+  const [config, setConfig] = useState<{
+    contactos: Array<{ email: string; nombre: string; tratamiento: string; rol: string; apodo: string }>;
+    perfil: { nombre: string; roles: string[]; firma: string };
+    reglas: { cadencia_dias: number[]; solo_borradores: boolean; hora_inicio: string; hora_fin: string };
+  } | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    const token = localStorage.getItem("insiste_token");
+    fetch("/api/panel/config", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((data) => { if (data.ok) setConfig(data.config); });
+  }, []);
+
+  const guardar = async () => {
+    setGuardando(true);
+    const token = localStorage.getItem("insiste_token");
+    const res = await fetch("/api/panel/config", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ config }),
+    });
+    const data = await res.json();
+    setMsg(data.message || data.error);
+    setGuardando(false);
+    setTimeout(() => setMsg(""), 3000);
+  };
+
+  const updateContacto = (idx: number, field: string, value: string) => {
+    if (!config) return;
+    const contactos = [...config.contactos];
+    contactos[idx] = { ...contactos[idx], [field]: value };
+    setConfig({ ...config, contactos });
+  };
+
+  const addContacto = () => {
+    if (!config) return;
+    setConfig({
+      ...config,
+      contactos: [...config.contactos, { email: "", nombre: "", tratamiento: "informal", rol: "", apodo: "" }],
+    });
+  };
+
+  const removeContacto = (idx: number) => {
+    if (!config) return;
+    const contactos = config.contactos.filter((_, i) => i !== idx);
+    setConfig({ ...config, contactos });
+  };
+
+  if (!config) return <p className="text-[var(--muted)] text-sm">Cargando config...</p>;
+
   return (
-    <div>
-      <h2 className="text-lg font-semibold mb-4">Configuración</h2>
+    <div className="max-w-2xl">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold">Configuraci&oacute;n del Agente</h2>
+        <button
+          onClick={guardar}
+          disabled={guardando}
+          className="px-4 py-2 rounded bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-sm font-medium transition-colors disabled:opacity-50"
+        >
+          {guardando ? "Guardando..." : "Guardar"}
+        </button>
+      </div>
+      {msg && <p className="text-sm text-green-400 mb-4">{msg}</p>}
+
+      {/* Perfil */}
+      <div className="p-4 rounded border border-[var(--border)] bg-[var(--card)] mb-4">
+        <h3 className="text-sm font-medium mb-3">Tu perfil</h3>
+        <div className="space-y-2">
+          <input
+            value={config.perfil.nombre}
+            onChange={(e) => setConfig({ ...config, perfil: { ...config.perfil, nombre: e.target.value } })}
+            placeholder="Tu nombre"
+            className="w-full p-2 rounded bg-[var(--background)] border border-[var(--border)] text-sm"
+          />
+          <input
+            value={config.perfil.firma}
+            onChange={(e) => setConfig({ ...config, perfil: { ...config.perfil, firma: e.target.value } })}
+            placeholder="Firma (ej: Saludos, Pablo)"
+            className="w-full p-2 rounded bg-[var(--background)] border border-[var(--border)] text-sm"
+          />
+          <textarea
+            value={config.perfil.roles.join("\n")}
+            onChange={(e) => setConfig({ ...config, perfil: { ...config.perfil, roles: e.target.value.split("\n").filter(Boolean) } })}
+            placeholder="Roles (uno por l&iacute;nea)"
+            rows={4}
+            className="w-full p-2 rounded bg-[var(--background)] border border-[var(--border)] text-sm"
+          />
+        </div>
+      </div>
+
+      {/* Contactos */}
+      <div className="p-4 rounded border border-[var(--border)] bg-[var(--card)] mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium">Contactos</h3>
+          <button onClick={addContacto} className="text-xs text-[var(--accent)] hover:underline">+ Agregar</button>
+        </div>
+        <div className="space-y-3">
+          {config.contactos.map((c, idx) => (
+            <div key={idx} className="p-3 rounded bg-[var(--background)] border border-[var(--border)] space-y-2">
+              <div className="flex gap-2">
+                <input
+                  value={c.email}
+                  onChange={(e) => updateContacto(idx, "email", e.target.value)}
+                  placeholder="email@ejemplo.com"
+                  className="flex-1 p-1.5 rounded bg-[var(--card)] border border-[var(--border)] text-xs"
+                />
+                <select
+                  value={c.tratamiento}
+                  onChange={(e) => updateContacto(idx, "tratamiento", e.target.value)}
+                  className="p-1.5 rounded bg-[var(--card)] border border-[var(--border)] text-xs"
+                >
+                  <option value="formal">Usted</option>
+                  <option value="informal">T&uacute;</option>
+                </select>
+                <button onClick={() => removeContacto(idx)} className="text-red-400 text-xs hover:text-red-300">Eliminar</button>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={c.nombre}
+                  onChange={(e) => updateContacto(idx, "nombre", e.target.value)}
+                  placeholder="Nombre completo"
+                  className="flex-1 p-1.5 rounded bg-[var(--card)] border border-[var(--border)] text-xs"
+                />
+                <input
+                  value={c.apodo}
+                  onChange={(e) => updateContacto(idx, "apodo", e.target.value)}
+                  placeholder="C&oacute;mo lo llamas"
+                  className="flex-1 p-1.5 rounded bg-[var(--card)] border border-[var(--border)] text-xs"
+                />
+              </div>
+              <input
+                value={c.rol}
+                onChange={(e) => updateContacto(idx, "rol", e.target.value)}
+                placeholder="Rol (ej: Aprueba gastos)"
+                className="w-full p-1.5 rounded bg-[var(--card)] border border-[var(--border)] text-xs"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Reglas */}
       <div className="p-4 rounded border border-[var(--border)] bg-[var(--card)]">
-        <h3 className="text-sm font-medium mb-3">Cadencia de recordatorios</h3>
-        <p className="text-sm text-[var(--muted)]">Días entre cada recordatorio: 1, 3, 7, 12</p>
-        <p className="text-xs text-[var(--muted)] mt-2">Editar en Supabase → tabla reglas</p>
-      </div>
-      <div className="mt-4 p-4 rounded border border-[var(--border)] bg-[var(--card)]">
-        <h3 className="text-sm font-medium mb-3">Contactos formales (trato de usted)</h3>
-        <ul className="text-sm text-[var(--muted)] space-y-1">
-          <li>pburgos@armglobal.org — Mi Pastor</li>
-          <li>pbpburgos2@gmail.com — Mi Pastor</li>
-          <li>palarcon@armglobal.org — Pastor Alarcón</li>
-        </ul>
-      </div>
-      <div className="mt-4 p-4 rounded border border-[var(--border)] bg-[var(--card)]">
-        <h3 className="text-sm font-medium mb-3">Organigrama</h3>
-        <ul className="text-sm text-[var(--muted)] space-y-1">
-          <li>Pastor Patricio Burgos → Aprueba gastos</li>
-          <li>Patricio Andrés Burgos (paburgos) → Ejecuta pagos</li>
-          <li>Pablo Encina (pencina) → Campus, presupuestos, plataforma</li>
-        </ul>
-      </div>
-      <div className="mt-4 p-4 rounded border border-[var(--border)] bg-[var(--card)]">
-        <h3 className="text-sm font-medium mb-3">Modo actual</h3>
-        <p className="text-sm text-[var(--muted)]">Solo borradores (el agente no envía directamente)</p>
-        <p className="text-sm text-[var(--muted)] mt-1">Crons: captar c/15min, sincronizar c/10min, enviar c/30min, responder c/5min</p>
+        <h3 className="text-sm font-medium mb-3">Reglas</h3>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-[var(--muted)] w-40">Cadencia (d&iacute;as):</label>
+            <input
+              value={config.reglas.cadencia_dias.join(", ")}
+              onChange={(e) => setConfig({ ...config, reglas: { ...config.reglas, cadencia_dias: e.target.value.split(",").map((n) => parseInt(n.trim())).filter(Boolean) } })}
+              className="flex-1 p-1.5 rounded bg-[var(--background)] border border-[var(--border)] text-xs"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-[var(--muted)] w-40">Solo borradores:</label>
+            <input
+              type="checkbox"
+              checked={config.reglas.solo_borradores}
+              onChange={(e) => setConfig({ ...config, reglas: { ...config.reglas, solo_borradores: e.target.checked } })}
+            />
+            <span className="text-xs text-[var(--muted)]">{config.reglas.solo_borradores ? "S&iacute; (reviso antes de enviar)" : "No (env&iacute;a directo)"}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-[var(--muted)] w-40">Horario:</label>
+            <input
+              value={config.reglas.hora_inicio}
+              onChange={(e) => setConfig({ ...config, reglas: { ...config.reglas, hora_inicio: e.target.value } })}
+              className="w-20 p-1.5 rounded bg-[var(--background)] border border-[var(--border)] text-xs"
+            />
+            <span className="text-xs text-[var(--muted)]">a</span>
+            <input
+              value={config.reglas.hora_fin}
+              onChange={(e) => setConfig({ ...config, reglas: { ...config.reglas, hora_fin: e.target.value } })}
+              className="w-20 p-1.5 rounded bg-[var(--background)] border border-[var(--border)] text-xs"
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
