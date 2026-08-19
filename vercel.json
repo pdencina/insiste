@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/responder",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/autoresponder",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

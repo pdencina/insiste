@@ -51,6 +51,26 @@ async function loadConfig(): Promise<AgentConfig | null> {
   }
 }
 
+/**
+ * Carga el perfil de escritura aprendido desde la DB.
+ */
+async function loadPerfilEscritura(): Promise<string | null> {
+  try {
+    const supabase = createServiceClient();
+    const { data } = await supabase
+      .from("eventos")
+      .select("detalle")
+      .eq("accion", "perfil_escritura")
+      .order("creado_en", { ascending: false })
+      .limit(1)
+      .single();
+
+    return data?.detalle?.perfil ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export interface ResponderInput {
   cadenaCompleta: string;
   ultimoMensaje: string;
@@ -79,6 +99,7 @@ export async function generarRespuesta(
 
   // Cargar config dinámica
   const config = await loadConfig();
+  const perfilEscritura = await loadPerfilEscritura();
   const contactosFormales = config?.contactos
     ?.filter((c) => c.tratamiento === "formal")
     .map((c) => c.email) ?? DEFAULT_CONTACTOS_FORMALES;
@@ -92,7 +113,7 @@ export async function generarRespuesta(
   );
 
   // Construir system prompt dinámico con la config
-  const systemPrompt = buildSystemPrompt(config);
+  const systemPrompt = buildSystemPrompt(config, perfilEscritura);
 
   const generativeModel = genAI.getGenerativeModel({
     model,
@@ -142,7 +163,7 @@ Redacta tu respuesta a este último mensaje. Recuerda: breve, directo, ${esForma
 /**
  * Construye el system prompt dinámicamente desde la config guardada.
  */
-function buildSystemPrompt(config: AgentConfig | null): string {
+function buildSystemPrompt(config: AgentConfig | null, perfilEscritura: string | null): string {
   const contactos = config?.contactos ?? [];
   const perfil = config?.perfil ?? { nombre: "Pablo Encina", roles: [], firma: "Saludos, Pablo" };
 
@@ -200,6 +221,12 @@ NUNCA:
 - Inventes información que no está en el hilo
 - Respondas de forma genérica — siempre referencia el tema específico
 - Confundas aprobación con ejecución
+
+${perfilEscritura ? `PERFIL DE ESCRITURA (IMITA EXACTAMENTE ESTE ESTILO):
+---
+${perfilEscritura}
+---
+IMPORTANTE: Tu respuesta DEBE sonar como si la escribiera esta persona. Usa sus mismas expresiones, largo, saludos y despedidas.` : ""}
 
 Responde SOLO con el texto del correo, nada más.`;
 }

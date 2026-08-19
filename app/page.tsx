@@ -13,6 +13,8 @@ interface InboxMessage {
   date: string;
   unread: boolean;
   hasAttachments: boolean;
+  diasSinResponder?: number;
+  participantes?: number;
 }
 
 interface Borrador {
@@ -83,7 +85,14 @@ export default function Panel() {
     try {
       const res = await fetch("/api/panel/inbox", { headers: headers() });
       const data = await res.json();
-      if (data.ok) setInbox(data.inbox);
+      if (data.ok) {
+        // Map lastDate to date for compatibility
+        const mapped = (data.inbox ?? []).map((msg: Record<string, unknown>) => ({
+          ...msg,
+          date: msg.lastDate || msg.date || "",
+        }));
+        setInbox(mapped);
+      }
     } catch (err) {
       console.error(err);
     }
