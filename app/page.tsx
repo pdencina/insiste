@@ -355,16 +355,25 @@ function ConfigView() {
 
   const guardar = async () => {
     setGuardando(true);
-    const token = localStorage.getItem("insiste_token");
-    const res = await fetch("/api/panel/config", {
-      method: "PUT",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ config }),
-    });
-    const data = await res.json();
-    setMsg(data.message || data.error);
+    setMsg("");
+    try {
+      const token = localStorage.getItem("insiste_token");
+      const res = await fetch("/api/panel/config", {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ config }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setMsg("Configuración guardada correctamente");
+      } else {
+        setMsg("Error: " + (data.error || "No se pudo guardar"));
+      }
+    } catch (err) {
+      setMsg("Error de red: " + String(err));
+    }
     setGuardando(false);
-    setTimeout(() => setMsg(""), 3000);
+    setTimeout(() => setMsg(""), 5000);
   };
 
   const updateContacto = (idx: number, field: string, value: string) => {
