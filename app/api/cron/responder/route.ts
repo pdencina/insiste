@@ -105,6 +105,8 @@ async function procesarHiloRespuesta(
   // Si el último mensaje es de alguien más, responder a esa persona
   // Si el último mensaje es mío, responder al destinatario original
   let destinatarios: string[];
+  let cc: string[] = [];
+
   if (remitente !== emailNormalizado) {
     destinatarios = [remitente];
     // Agregar otros destinatarios del To (excepto yo)
@@ -131,6 +133,21 @@ async function procesarHiloRespuesta(
       : [];
   }
 
+  // Extraer CC de la cadena (todos los que aparecen en CC en cualquier mensaje)
+  const ccSet = new Set<string>();
+  for (const msg of thread.messages) {
+    if (msg.headers.cc) {
+      msg.headers.cc.split(",").forEach((part) => {
+        const match = part.match(/<([^>]+)>/);
+        const email = match ? match[1].toLowerCase() : part.trim().toLowerCase();
+        if (email && email !== emailNormalizado && !destinatarios.includes(email) && email.includes("@")) {
+          ccSet.add(email);
+        }
+      });
+    }
+  }
+  cc = Array.from(ccSet);
+
   if (destinatarios.length === 0) return false;
 
   // Leer el cuerpo completo de todos los mensajes del hilo
@@ -154,6 +171,7 @@ async function procesarHiloRespuesta(
     gmail,
     threadId,
     to: destinatarios,
+    cc: cc.length > 0 ? cc : undefined,
     subject: ultimoMsg.headers.subject ?? thread.messages[0].headers.subject ?? "(sin asunto)",
     body: respuesta.cuerpo,
     inReplyTo: ultimoMsg.headers.messageId ?? ultimoMsg.id,

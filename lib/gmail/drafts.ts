@@ -14,6 +14,7 @@ export interface DraftOptions {
   gmail: gmail_v1.Gmail;
   threadId: string;
   to: string[];
+  cc?: string[];
   subject: string;
   body: string;
   inReplyTo: string;
@@ -30,13 +31,14 @@ export interface DraftResult {
  * Crea un borrador dentro de un hilo existente.
  */
 export async function createDraftInThread(options: DraftOptions): Promise<DraftResult> {
-  const { gmail, threadId, to, subject, body, inReplyTo, references } = options;
+  const { gmail, threadId, to, cc, subject, body, inReplyTo, references } = options;
 
   const reSubject = ensureRePrefix(subject);
   const fullReferences = buildReferences(references, inReplyTo);
 
   const rawMessage = buildDraftRawMessage({
     to: to.join(", "),
+    cc: cc && cc.length > 0 ? cc.join(", ") : undefined,
     subject: reSubject,
     inReplyTo,
     references: fullReferences,
@@ -66,6 +68,7 @@ export async function createDraftInThread(options: DraftOptions): Promise<DraftR
 
 interface DraftRawParams {
   to: string;
+  cc?: string;
   subject: string;
   inReplyTo: string;
   references: string;
@@ -73,10 +76,11 @@ interface DraftRawParams {
 }
 
 function buildDraftRawMessage(params: DraftRawParams): string {
-  const { to, subject, inReplyTo, references, body } = params;
+  const { to, cc, subject, inReplyTo, references, body } = params;
 
   const lines = [
     `To: ${to}`,
+    ...(cc ? [`Cc: ${cc}`] : []),
     `Subject: ${subject}`,
     `In-Reply-To: ${inReplyTo}`,
     `References: ${references}`,

@@ -36,6 +36,7 @@ export async function getThread(
       metadataHeaders: [
         "From",
         "To",
+        "Cc",
         "Subject",
         "Date",
         "Message-ID",

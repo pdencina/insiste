@@ -13,6 +13,7 @@ export interface ParsedHeaders {
   references: string | null;
   from: string | null;
   to: string | null;
+  cc: string | null;
   subject: string | null;
   date: string | null;
   contentType: string | null;
@@ -48,6 +49,7 @@ export function parseHeaders(headers: GmailHeader[]): ParsedHeaders {
     references: get("References"),
     from: get("From"),
     to: get("To"),
+    cc: get("Cc") || get("CC"),
     subject: get("Subject"),
     date: get("Date"),
     contentType: get("Content-Type"),
