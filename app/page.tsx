@@ -453,7 +453,7 @@ function ConfigView() {
                   value={c.email}
                   onChange={(e) => updateContacto(idx, "email", e.target.value)}
                   placeholder="email@ejemplo.com"
-                  className="flex-1 p-1.5 rounded bg-[var(--card)] border border-[var(--border)] text-xs"
+                  className="flex-1 p-1.5 rounded bg-[var(--card)] border border-[var(--border)] text-xs placeholder-[var(--muted)]"
                 />
                 <select
                   value={c.tratamiento}
@@ -470,21 +470,30 @@ function ConfigView() {
                   value={c.nombre}
                   onChange={(e) => updateContacto(idx, "nombre", e.target.value)}
                   placeholder="Nombre completo"
-                  className="flex-1 p-1.5 rounded bg-[var(--card)] border border-[var(--border)] text-xs"
+                  className="flex-1 p-1.5 rounded bg-[var(--card)] border border-[var(--border)] text-xs placeholder-[var(--muted)]"
                 />
                 <input
                   value={c.apodo}
                   onChange={(e) => updateContacto(idx, "apodo", e.target.value)}
-                  placeholder="C&oacute;mo lo llamas"
-                  className="flex-1 p-1.5 rounded bg-[var(--card)] border border-[var(--border)] text-xs"
+                  placeholder="C&oacute;mo lo llamas (ej: Mi Pastor)"
+                  className="flex-1 p-1.5 rounded bg-[var(--card)] border border-[var(--border)] text-xs placeholder-[var(--muted)]"
                 />
               </div>
               <input
                 value={c.rol}
                 onChange={(e) => updateContacto(idx, "rol", e.target.value)}
-                placeholder="Rol (ej: Aprueba gastos)"
-                className="w-full p-1.5 rounded bg-[var(--card)] border border-[var(--border)] text-xs"
+                placeholder="Rol (ej: Aprueba gastos, Ejecuta pagos)"
+                className="w-full p-1.5 rounded bg-[var(--card)] border border-[var(--border)] text-xs placeholder-[var(--muted)]"
               />
+              <div className="flex gap-4 text-[10px] text-[var(--muted)] pt-1">
+                <span>Email</span>
+                <span>|</span>
+                <span>Trato</span>
+                <span>|</span>
+                <span>Nombre / Apodo</span>
+                <span>|</span>
+                <span>Rol en la org</span>
+              </div>
             </div>
           ))}
         </div>
