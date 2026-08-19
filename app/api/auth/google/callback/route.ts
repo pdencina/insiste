@@ -77,20 +77,20 @@ export async function GET(request: NextRequest) {
       userId = newUser.user.id;
     }
 
-    const { error: dbError } = await supabase.from("cuentas").upsert(
-      {
-        user_id: userId,
-        email,
-        refresh_token_cifrado: Buffer.from(tokens.refresh_token, "utf-8").toString("base64"),
-        access_token: tokens.access_token,
-        access_expira_en: tokens.expiry_date
-          ? new Date(tokens.expiry_date).toISOString()
-          : null,
-        estado: "activa",
-        envio_habilitado: false, // Arranca apagado por seguridad
-      },
-      { onConflict: "user_id,email" }
-    );
+    // Eliminar cuentas previas con este email (evitar duplicados)
+    await supabase.from("cuentas").delete().eq("email", email);
+
+    const { error: dbError } = await supabase.from("cuentas").insert({
+      user_id: userId,
+      email,
+      refresh_token_cifrado: Buffer.from(tokens.refresh_token, "utf-8").toString("base64"),
+      access_token: tokens.access_token,
+      access_expira_en: tokens.expiry_date
+        ? new Date(tokens.expiry_date).toISOString()
+        : null,
+      estado: "activa",
+      envio_habilitado: true,
+    });
 
     if (dbError) {
       console.error("Error guardando cuenta:", dbError);
