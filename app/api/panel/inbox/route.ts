@@ -1,8 +1,9 @@
 /**
- * API Panel: Inbox
+ * API Panel: Inbox Inteligente
  *
- * Lista los últimos correos del inbox que podrían necesitar respuesta.
- * Filtra automáticos y notificaciones.
+ * Muestra hilos donde el usuario NO fue el último en responder.
+ * Filtra automáticos (newsletters, notificaciones, calendarios).
+ * Ordena por antigüedad (más días sin respuesta primero).
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -32,81 +33,146 @@ export async function GET(request: NextRequest) {
     }
 
     const gmail = await getGmailClient(cuenta.id);
+    const miEmail = cuenta.email.toLowerCase();
 
-    // Listar últimos mensajes del inbox (no leídos primero, luego recientes)
+    // Buscar hilos recientes del inbox (últimos 50)
     const response = await withRetry(() =>
-      gmail.users.messages.list({
+      gmail.users.threads.list({
         userId: "me",
         labelIds: ["INBOX"],
-        maxResults: 20,
+        maxResults: 50,
       })
     );
 
-    const messages = response.data.messages ?? [];
-    const inbox: Array<{
+    const threads = response.data.threads ?? [];
+    const pendientes: Array<{
       id: string;
       threadId: string;
       from: string;
       fromEmail: string;
       subject: string;
       snippet: string;
-      date: string;
+      lastDate: string;
+      diasSinResponder: number;
       unread: boolean;
       hasAttachments: boolean;
+      participantes: number;
     }> = [];
 
-    for (const msg of messages.slice(0, 15)) {
+    // Procesar cada hilo para ver si estamos pendientes de responder
+    for (const thread of threads) {
       try {
         const detail = await withRetry(() =>
-          gmail.users.messages.get({
+          gmail.users.threads.get({
             userId: "me",
-            id: msg.id!,
+            id: thread.id!,
             format: "metadata",
-            metadataHeaders: ["From", "Subject", "Date"],
+            metadataHeaders: ["From", "To", "Subject", "Date"],
           })
         );
 
-        const headers = detail.data.payload?.headers ?? [];
+        const messages = detail.data.messages ?? [];
+        if (messages.length === 0) continue;
+
+        // Obtener el último mensaje del hilo
+        const ultimoMsg = messages[messages.length - 1];
+        const headers = ultimoMsg.payload?.headers ?? [];
         const from = headers.find((h) => h.name === "From")?.value ?? "";
-        const subject = headers.find((h) => h.name === "Subject")?.value ?? "(sin asunto)";
-        const date = headers.find((h) => h.name === "Date")?.value ?? "";
+        const subject = headers.find((h) => h.name === "Subject")?.value ?? "";
         const fromEmail = extractEmail(from);
 
-        // Filtrar notificaciones automáticas
-        if (
-          fromEmail.includes("noreply") ||
-          fromEmail.includes("no-reply") ||
-          fromEmail.includes("notifications") ||
-          fromEmail.includes("mailer-daemon")
-        ) {
-          continue;
-        }
+        // Filtrar: si el último mensaje es MÍO, no estoy pendiente
+        if (fromEmail === miEmail) continue;
 
-        const labels = detail.data.labelIds ?? [];
+        // Filtrar automáticos y newsletters
+        if (esAutomatico(fromEmail, subject)) continue;
+
+        // Calcular días sin responder
+        const internalDate = parseInt(ultimoMsg.internalDate ?? "0", 10);
+        const diasSinResponder = Math.floor(
+          (Date.now() - internalDate) / (1000 * 60 * 60 * 24)
+        );
+
+        // Solo mostrar si tiene al menos unas horas (no los de hace 5 min)
+        if (diasSinResponder < 0) continue;
+
+        const labels = ultimoMsg.labelIds ?? [];
         const unread = labels.includes("UNREAD");
-        const hasAttachments = detail.data.payload?.parts?.some(
+        const hasAttachments = ultimoMsg.payload?.parts?.some(
           (p) => p.filename && p.filename.length > 0
         ) ?? false;
 
-        inbox.push({
-          id: msg.id!,
-          threadId: msg.threadId!,
+        pendientes.push({
+          id: ultimoMsg.id!,
+          threadId: thread.id!,
           from,
           fromEmail,
-          subject,
-          snippet: detail.data.snippet ?? "",
-          date,
+          subject: subject || "(sin asunto)",
+          snippet: ultimoMsg.snippet ?? "",
+          lastDate: new Date(internalDate).toISOString(),
+          diasSinResponder,
           unread,
           hasAttachments,
+          participantes: messages.length,
         });
       } catch {
-        // Ignorar mensajes que no se pueden leer
+        // Ignorar hilos que no se pueden leer
       }
     }
 
-    return NextResponse.json({ ok: true, inbox });
+    // Ordenar por días sin responder (más viejo primero)
+    pendientes.sort((a, b) => b.diasSinResponder - a.diasSinResponder);
+
+    return NextResponse.json({
+      ok: true,
+      inbox: pendientes,
+      total: pendientes.length,
+    });
   } catch (err) {
     console.error("Error en panel inbox:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
+}
+
+/**
+ * Detecta correos automáticos que no requieren respuesta.
+ */
+function esAutomatico(fromEmail: string, subject: string): boolean {
+  const emailsAuto = [
+    "noreply", "no-reply", "notifications", "mailer-daemon",
+    "postmaster", "calendar-notification", "notify",
+    "donotreply", "automated", "alerts",
+  ];
+
+  const dominiosAuto = [
+    "github.com", "gitlab.com", "asana.com", "trello.com",
+    "slack.com", "google.com", "calendar.google.com",
+    "docs.google.com", "vercel.com", "supabase.io",
+    "supabase.com", "dataddo.com",
+  ];
+
+  const subjectPatterns = [
+    /invitaci[oó]n.*calendar/i,
+    /invitaci[oó]n:.*\d{4}/i,
+    /^\[GitHub\]/i,
+    /has been (assigned|updated|created)/i,
+    /tienes.*notificaciones/i,
+    /your.*is going to be/i,
+    /new (comment|task|issue)/i,
+    /reminder:/i,
+    /auto-?reply/i,
+    /out of office/i,
+    /fuera de oficina/i,
+  ];
+
+  // Check email patterns
+  if (emailsAuto.some((e) => fromEmail.includes(e))) return true;
+
+  // Check domains
+  if (dominiosAuto.some((d) => fromEmail.endsWith(`@${d}`) || fromEmail.includes(`.${d}`))) return true;
+
+  // Check subject patterns
+  if (subjectPatterns.some((p) => p.test(subject))) return true;
+
+  return false;
 }

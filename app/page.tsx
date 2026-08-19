@@ -227,10 +227,13 @@ function InboxView({ inbox, onAction, onRefresh }: { inbox: InboxMessage[]; onAc
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">Inbox</h2>
+        <div>
+          <h2 className="text-lg font-semibold">Pendientes de respuesta</h2>
+          <p className="text-xs text-[var(--muted)]">Correos donde no has sido el último en responder</p>
+        </div>
         <button onClick={onRefresh} className="text-sm text-[var(--accent)] hover:underline">Actualizar</button>
       </div>
-      {inbox.length === 0 && <p className="text-[var(--muted)] text-sm">No hay correos nuevos</p>}
+      {inbox.length === 0 && <p className="text-[var(--muted)] text-sm">No hay correos pendientes de respuesta</p>}
       <div className="flex flex-col gap-2">
         {inbox.map((msg) => (
           <div key={msg.id} className={`p-4 rounded border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--card-hover)] transition-colors ${msg.unread ? "border-l-2 border-l-[var(--accent)]" : ""}`}>
@@ -244,7 +247,7 @@ function InboxView({ inbox, onAction, onRefresh }: { inbox: InboxMessage[]; onAc
                 <p className="text-xs text-[var(--muted)] truncate mt-1">{msg.snippet}</p>
               </div>
               <div className="flex flex-col items-end gap-2 shrink-0">
-                <span className="text-xs text-[var(--muted)]">{formatDate(msg.date)}</span>
+                <span className={`text-xs font-medium ${getDaysColor(msg.date)}`}>{formatDate(msg.date)}</span>
                 <div className="flex gap-1">
                   <ActionButton label="Responder IA" onClick={() => onAction("responder", { threadId: msg.threadId })} color="accent" />
                   <ActionButton label="Seguir" onClick={() => onAction("seguir", { threadId: msg.threadId })} color="success" />
@@ -547,9 +550,23 @@ function formatDate(dateStr: string): string {
 
     if (hours < 1) return "Hace minutos";
     if (hours < 24) return `Hace ${hours}h`;
-    if (days < 7) return `Hace ${days}d`;
+    if (days === 1) return "Ayer";
+    if (days < 7) return `Hace ${days} días`;
     return date.toLocaleDateString("es-CL", { day: "numeric", month: "short" });
   } catch {
     return dateStr;
+  }
+}
+
+function getDaysColor(dateStr: string): string {
+  try {
+    const date = new Date(dateStr);
+    const days = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+    if (days >= 7) return "text-red-400"; // Urgente
+    if (days >= 3) return "text-yellow-400"; // Atención
+    if (days >= 1) return "text-orange-300"; // Normal
+    return "text-[var(--muted)]"; // Reciente
+  } catch {
+    return "text-[var(--muted)]";
   }
 }
