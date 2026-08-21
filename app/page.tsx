@@ -39,7 +39,7 @@ interface Seguimiento {
   motivo_pausa: string | null;
 }
 
-type Tab = "inbox" | "borradores" | "seguimientos" | "config";
+type Tab = "inbox" | "borradores" | "seguimientos" | "whatsapp" | "config";
 
 export default function Panel() {
   const [token, setToken] = useState("");
@@ -175,6 +175,7 @@ export default function Panel() {
         <NavItem active={tab === "inbox"} onClick={() => setTab("inbox")} icon="📥" label="Inbox" />
         <NavItem active={tab === "borradores"} onClick={() => setTab("borradores")} icon="📝" label="Borradores" />
         <NavItem active={tab === "seguimientos"} onClick={() => setTab("seguimientos")} icon="🔄" label="Seguimientos" />
+        <NavItem active={tab === "whatsapp"} onClick={() => setTab("whatsapp")} icon="💬" label="WhatsApp" />
         <NavItem active={tab === "config"} onClick={() => setTab("config")} icon="⚙️" label="Config" />
         <div className="mt-auto pt-4 border-t border-[var(--border)]">
           <a
@@ -207,6 +208,9 @@ export default function Panel() {
         )}
         {tab === "seguimientos" && !loading && (
           <SeguimientosView seguimientos={seguimientos} onAction={ejecutarAccion} onRefresh={fetchSeguimientos} />
+        )}
+        {tab === "whatsapp" && (
+          <WhatsAppView token={token} />
         )}
         {tab === "config" && (
           <ConfigView />
@@ -564,6 +568,130 @@ function ActionButton({ label, onClick, color }: { label: string; onClick: () =>
     >
       {label}
     </button>
+  );
+}
+
+function WhatsAppView({ token }: { token: string }) {
+  const [conversaciones, setConversaciones] = useState<Array<{
+    id: number;
+    contactName: string;
+    leadName: string | null;
+    horasRestantes: number;
+    minutosRestantes: number;
+    estado: string;
+    origin: string;
+    isRead: boolean;
+  }>>([]);
+  const [resumen, setResumen] = useState<{ total: number; expirados: number; criticos: number; alertas: number; ok: number } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const fetchData = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/panel/whatsapp", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setConversaciones(data.conversaciones);
+        setResumen(data.resumen);
+      } else {
+        setError(data.error || "Error al cargar");
+      }
+    } catch (err) {
+      setError(String(err));
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
+  // Auto-refresh cada 60 segundos
+  useEffect(() => {
+    const interval = setInterval(fetchData, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading) return <p className="text-[var(--muted)] text-sm">Cargando conversaciones de Kommo...</p>;
+  if (error) return <p className="text-red-400 text-sm">Error: {error}</p>;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-lg font-semibold">Ventana 24h WhatsApp</h2>
+          <p className="text-xs text-[var(--muted)]">Conversaciones abiertas en Kommo - se actualiza cada 60s</p>
+        </div>
+        <button onClick={fetchData} className="text-sm text-[var(--accent)] hover:underline">Actualizar</button>
+      </div>
+
+      {/* Resumen */}
+      {resumen && (
+        <div className="grid grid-cols-4 gap-3 mb-6">
+          <div className="p-3 rounded border border-red-800 bg-red-950/30 text-center">
+            <p className="text-2xl font-bold text-red-400">{resumen.expirados}</p>
+            <p className="text-xs text-red-300">Expirados</p>
+          </div>
+          <div className="p-3 rounded border border-orange-800 bg-orange-950/30 text-center">
+            <p className="text-2xl font-bold text-orange-400">{resumen.criticos}</p>
+            <p className="text-xs text-orange-300">Criticos (&lt;2h)</p>
+          </div>
+          <div className="p-3 rounded border border-yellow-800 bg-yellow-950/30 text-center">
+            <p className="text-2xl font-bold text-yellow-400">{resumen.alertas}</p>
+            <p className="text-xs text-yellow-300">Alerta (&lt;6h)</p>
+          </div>
+          <div className="p-3 rounded border border-green-800 bg-green-950/30 text-center">
+            <p className="text-2xl font-bold text-green-400">{resumen.ok}</p>
+            <p className="text-xs text-green-300">OK (&gt;6h)</p>
+          </div>
+        </div>
+      )}
+
+      {/* Lista de conversaciones */}
+      {conversaciones.length === 0 && <p className="text-[var(--muted)] text-sm">No hay conversaciones abiertas</p>}
+      <div className="flex flex-col gap-2">
+        {conversaciones.map((conv) => (
+          <div
+            key={conv.id}
+            className={`p-4 rounded border bg-[var(--card)] ${
+              conv.estado === "expirado" ? "border-red-600 bg-red-950/20" :
+              conv.estado === "critico" ? "border-orange-600 bg-orange-950/20" :
+              conv.estado === "alerta" ? "border-yellow-600 bg-yellow-950/10" :
+              "border-[var(--border)]"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{conv.contactName}</span>
+                  {!conv.isRead && <span className="w-2 h-2 rounded-full bg-blue-400"></span>}
+                </div>
+                {conv.leadName && (
+                  <p className="text-xs text-[var(--muted)] mt-0.5">{conv.leadName}</p>
+                )}
+              </div>
+              <div className="text-right shrink-0">
+                <p className={`text-sm font-bold ${
+                  conv.estado === "expirado" ? "text-red-400" :
+                  conv.estado === "critico" ? "text-orange-400" :
+                  conv.estado === "alerta" ? "text-yellow-400" :
+                  "text-green-400"
+                }`}>
+                  {conv.estado === "expirado" ? "EXPIRADO" :
+                   conv.horasRestantes < 1 ? `${conv.minutosRestantes} min` :
+                   `${conv.horasRestantes}h`}
+                </p>
+                <p className="text-[10px] text-[var(--muted)]">
+                  {conv.estado === "expirado" ? "Ventana cerrada" : "restantes"}
+                </p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
