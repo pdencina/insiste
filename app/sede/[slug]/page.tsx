@@ -6,7 +6,10 @@ import { useParams } from "next/navigation";
 interface Conversacion {
   id: number;
   contactName: string;
+  contactId: number;
+  leadId: number | null;
   leadName: string | null;
+  pipelineName: string | null;
   sede: string | null;
   horasRestantes: number;
   minutosRestantes: number;
@@ -187,46 +190,147 @@ export default function SedePage() {
             </p>
           )}
 
+          {/* Resumen ejecutivo */}
+          {resumen.criticos > 0 && (
+            <div className="mb-4 p-3 rounded border border-orange-600 bg-orange-950/20">
+              <p className="text-xs text-orange-300 font-medium">
+                ⚡ {resumen.criticos} conversacion{resumen.criticos > 1 ? "es" : ""} por vencer en menos de 2 horas. Responde ahora para no perder estos leads.
+              </p>
+            </div>
+          )}
+          {resumen.expirados > 0 && filtroEstado === "todos" && (
+            <div className="mb-4 p-3 rounded border border-red-800 bg-red-950/10">
+              <p className="text-xs text-red-300">
+                {resumen.expirados} lead{resumen.expirados > 1 ? "s" : ""} con ventana vencida. Usa el botón "Reactivar" para generar un mensaje de reconexión.
+              </p>
+            </div>
+          )}
+
           {/* Lista */}
           {convsFiltradas.length === 0 && <p className="text-[var(--muted)] text-sm">No hay conversaciones con ese filtro</p>}
           <div className="flex flex-col gap-2">
             {convsFiltradas.map((conv) => (
-              <div
-                key={conv.id}
-                className={`p-4 rounded border bg-[var(--card)] ${
-                  conv.estado === "expirado" ? "border-red-600 bg-red-950/20" :
-                  conv.estado === "critico" ? "border-orange-600 bg-orange-950/20" :
-                  conv.estado === "alerta" ? "border-yellow-600 bg-yellow-950/10" :
-                  "border-[var(--border)]"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium">{conv.contactName}</span>
-                    {conv.leadName && (
-                      <p className="text-xs text-[var(--muted)] mt-0.5">{conv.leadName}</p>
-                    )}
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className={`text-sm font-bold ${
-                      conv.estado === "expirado" ? "text-red-400" :
-                      conv.estado === "critico" ? "text-orange-400" :
-                      conv.estado === "alerta" ? "text-yellow-400" :
-                      "text-green-400"
-                    }`}>
-                      {conv.estado === "expirado" ? "EXPIRADO" :
-                       conv.horasRestantes < 1 ? `${conv.minutosRestantes} min` :
-                       `${conv.horasRestantes}h`}
-                    </p>
-                    <p className="text-[10px] text-[var(--muted)]">
-                      {conv.estado === "expirado" ? "Ventana cerrada" : "restantes"}
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <ConversacionCard key={conv.id} conv={conv} slug={slug} sedeNombre={sedeInfo.sedeNombre} />
             ))}
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+function ConversacionCard({ conv, slug, sedeNombre }: { conv: Conversacion; slug: string; sedeNombre: string }) {
+  const [mensajeIA, setMensajeIA] = useState("");
+  const [generando, setGenerando] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+  const subdomain = "contactoarschoolglobalcom";
+
+  const generarMensaje = async () => {
+    setGenerando(true);
+    try {
+      const res = await fetch("/api/panel/reactivar", {
+        method: "POST",
+        headers: { "x-sede-auth": slug, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contactName: conv.contactName,
+          leadName: conv.leadName,
+          pipelineName: conv.pipelineName,
+          sede: sedeNombre,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setMensajeIA(data.mensaje);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setGenerando(false);
+  };
+
+  const copiarMensaje = () => {
+    navigator.clipboard.writeText(mensajeIA);
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 2000);
+  };
+
+  const kommoUrl = conv.leadId
+    ? `https://${subdomain}.kommo.com/leads/detail/${conv.leadId}`
+    : `https://${subdomain}.kommo.com/contacts/detail/${conv.contactId}`;
+
+  return (
+    <div
+      className={`p-4 rounded border bg-[var(--card)] ${
+        conv.estado === "expirado" ? "border-red-600 bg-red-950/20" :
+        conv.estado === "critico" ? "border-orange-600 bg-orange-950/20" :
+        conv.estado === "alerta" ? "border-yellow-600 bg-yellow-950/10" :
+        "border-[var(--border)]"
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex-1 min-w-0">
+          <span className="text-sm font-medium">{conv.contactName}</span>
+          {conv.leadName && (
+            <p className="text-xs text-[var(--muted)] mt-0.5">{conv.leadName}</p>
+          )}
+          {conv.pipelineName && (
+            <p className="text-[10px] mt-0.5 px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-300 inline-block">{conv.pipelineName}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Acciones */}
+          <div className="flex gap-1">
+            {conv.estado === "expirado" && (
+              <button
+                onClick={generarMensaje}
+                disabled={generando}
+                className="px-2 py-1 rounded text-[10px] font-medium bg-purple-600 hover:bg-purple-700 text-white transition-colors disabled:opacity-50"
+              >
+                {generando ? "..." : "Reactivar"}
+              </button>
+            )}
+            <a
+              href={kommoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2 py-1 rounded text-[10px] font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+            >
+              Ver en Kommo
+            </a>
+          </div>
+          {/* Timer */}
+          <div className="text-right ml-2">
+            <p className={`text-sm font-bold ${
+              conv.estado === "expirado" ? "text-red-400" :
+              conv.estado === "critico" ? "text-orange-400" :
+              conv.estado === "alerta" ? "text-yellow-400" :
+              "text-green-400"
+            }`}>
+              {conv.estado === "expirado" ? "EXPIRADO" :
+               conv.horasRestantes < 1 ? `${conv.minutosRestantes} min` :
+               `${conv.horasRestantes}h`}
+            </p>
+            <p className="text-[10px] text-[var(--muted)]">
+              {conv.estado === "expirado" ? "Ventana cerrada" : "restantes"}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Mensaje de reactivación generado */}
+      {mensajeIA && (
+        <div className="mt-3 p-3 rounded bg-[var(--background)] border border-[var(--border)]">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] text-purple-300 font-medium">Mensaje de reconexión sugerido:</p>
+            <button
+              onClick={copiarMensaje}
+              className="px-2 py-0.5 rounded text-[10px] bg-green-600 hover:bg-green-700 text-white transition-colors"
+            >
+              {copiado ? "Copiado!" : "Copiar"}
+            </button>
+          </div>
+          <p className="text-xs text-[var(--foreground)] whitespace-pre-wrap">{mensajeIA}</p>
+        </div>
       )}
     </div>
   );
