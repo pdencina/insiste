@@ -586,6 +586,7 @@ function WhatsAppView({ token }: { token: string }) {
   const [resumen, setResumen] = useState<{ total: number; expirados: number; criticos: number; alertas: number; ok: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [filtroSede, setFiltroSede] = useState<string>("todas");
 
   const fetchData = async () => {
     setLoading(true);
@@ -615,6 +616,23 @@ function WhatsAppView({ token }: { token: string }) {
     return () => clearInterval(interval);
   }, []);
 
+  // Filtrar conversaciones por sede
+  const convsFiltradas = filtroSede === "todas"
+    ? conversaciones
+    : conversaciones.filter((c) => c.sede?.toLowerCase() === filtroSede.toLowerCase());
+
+  // Sedes únicas para el dropdown
+  const sedes = [...new Set(conversaciones.map((c) => c.sede).filter(Boolean))] as string[];
+
+  // Recalcular resumen filtrado
+  const resumenFiltrado = {
+    total: convsFiltradas.length,
+    expirados: convsFiltradas.filter((c) => c.estado === "expirado").length,
+    criticos: convsFiltradas.filter((c) => c.estado === "critico").length,
+    alertas: convsFiltradas.filter((c) => c.estado === "alerta").length,
+    ok: convsFiltradas.filter((c) => c.estado === "ok").length,
+  };
+
   if (loading) return <p className="text-[var(--muted)] text-sm">Cargando conversaciones de Kommo...</p>;
   if (error) return <p className="text-red-400 text-sm">Error: {error}</p>;
 
@@ -625,35 +643,45 @@ function WhatsAppView({ token }: { token: string }) {
           <h2 className="text-lg font-semibold">Ventana 24h WhatsApp</h2>
           <p className="text-xs text-[var(--muted)]">Conversaciones abiertas en Kommo - se actualiza cada 60s</p>
         </div>
-        <button onClick={fetchData} className="text-sm text-[var(--accent)] hover:underline">Actualizar</button>
+        <div className="flex items-center gap-3">
+          <select
+            value={filtroSede}
+            onChange={(e) => setFiltroSede(e.target.value)}
+            className="p-1.5 rounded bg-[var(--card)] border border-[var(--border)] text-xs"
+          >
+            <option value="todas">Todas las sedes</option>
+            {sedes.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <button onClick={fetchData} className="text-sm text-[var(--accent)] hover:underline">Actualizar</button>
+        </div>
       </div>
 
       {/* Resumen */}
-      {resumen && (
-        <div className="grid grid-cols-4 gap-3 mb-6">
-          <div className="p-3 rounded border border-red-800 bg-red-950/30 text-center">
-            <p className="text-2xl font-bold text-red-400">{resumen.expirados}</p>
-            <p className="text-xs text-red-300">Expirados</p>
-          </div>
-          <div className="p-3 rounded border border-orange-800 bg-orange-950/30 text-center">
-            <p className="text-2xl font-bold text-orange-400">{resumen.criticos}</p>
-            <p className="text-xs text-orange-300">Criticos (&lt;2h)</p>
-          </div>
-          <div className="p-3 rounded border border-yellow-800 bg-yellow-950/30 text-center">
-            <p className="text-2xl font-bold text-yellow-400">{resumen.alertas}</p>
-            <p className="text-xs text-yellow-300">Alerta (&lt;6h)</p>
-          </div>
-          <div className="p-3 rounded border border-green-800 bg-green-950/30 text-center">
-            <p className="text-2xl font-bold text-green-400">{resumen.ok}</p>
-            <p className="text-xs text-green-300">OK (&gt;6h)</p>
-          </div>
+      <div className="grid grid-cols-4 gap-3 mb-6">
+        <div className="p-3 rounded border border-red-800 bg-red-950/30 text-center">
+          <p className="text-2xl font-bold text-red-400">{resumenFiltrado.expirados}</p>
+          <p className="text-xs text-red-300">Expirados</p>
         </div>
-      )}
+        <div className="p-3 rounded border border-orange-800 bg-orange-950/30 text-center">
+          <p className="text-2xl font-bold text-orange-400">{resumenFiltrado.criticos}</p>
+          <p className="text-xs text-orange-300">Criticos (&lt;2h)</p>
+        </div>
+        <div className="p-3 rounded border border-yellow-800 bg-yellow-950/30 text-center">
+          <p className="text-2xl font-bold text-yellow-400">{resumenFiltrado.alertas}</p>
+          <p className="text-xs text-yellow-300">Alerta (&lt;6h)</p>
+        </div>
+        <div className="p-3 rounded border border-green-800 bg-green-950/30 text-center">
+          <p className="text-2xl font-bold text-green-400">{resumenFiltrado.ok}</p>
+          <p className="text-xs text-green-300">OK (&gt;6h)</p>
+        </div>
+      </div>
 
       {/* Lista de conversaciones */}
-      {conversaciones.length === 0 && <p className="text-[var(--muted)] text-sm">No hay conversaciones abiertas</p>}
+      {convsFiltradas.length === 0 && <p className="text-[var(--muted)] text-sm">No hay conversaciones {filtroSede !== "todas" ? `en ${filtroSede}` : "abiertas"}</p>}
       <div className="flex flex-col gap-2">
-        {conversaciones.map((conv) => (
+        {convsFiltradas.map((conv) => (
           <div
             key={conv.id}
             className={`p-4 rounded border bg-[var(--card)] ${
