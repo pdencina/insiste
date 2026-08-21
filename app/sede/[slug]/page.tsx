@@ -131,10 +131,11 @@ export default function SedePage() {
     : conversaciones.filter((c) => c.estado === filtroEstado);
 
   const resumen = {
+    demorados: conversaciones.filter((c) => c.estado === "demorado").length,
+    pendientes: conversaciones.filter((c) => c.estado === "pendiente").length,
+    frios: conversaciones.filter((c) => c.estado === "frio").length,
     expirados: conversaciones.filter((c) => c.estado === "expirado").length,
-    criticos: conversaciones.filter((c) => c.estado === "critico").length,
-    alertas: conversaciones.filter((c) => c.estado === "alerta").length,
-    ok: conversaciones.filter((c) => c.estado === "ok").length,
+    atendidos: conversaciones.filter((c) => c.estado === "atendido").length,
   };
 
   return (
@@ -153,34 +154,41 @@ export default function SedePage() {
       {!loading && !error && (
         <>
           {/* Resumen clickeable */}
-          <div className="grid grid-cols-4 gap-3 mb-6">
+          <div className="grid grid-cols-5 gap-2 mb-6">
+            <button
+              onClick={() => setFiltroEstado(filtroEstado === "demorado" ? "todos" : "demorado")}
+              className={`p-3 rounded border text-center transition-all ${filtroEstado === "demorado" ? "border-orange-400 ring-2 ring-orange-400/50" : "border-orange-800"} bg-orange-950/30 hover:border-orange-400`}
+            >
+              <p className="text-2xl font-bold text-orange-400">{resumen.demorados}</p>
+              <p className="text-[10px] text-orange-300">Demorado</p>
+            </button>
+            <button
+              onClick={() => setFiltroEstado(filtroEstado === "pendiente" ? "todos" : "pendiente")}
+              className={`p-3 rounded border text-center transition-all ${filtroEstado === "pendiente" ? "border-yellow-400 ring-2 ring-yellow-400/50" : "border-yellow-800"} bg-yellow-950/30 hover:border-yellow-400`}
+            >
+              <p className="text-2xl font-bold text-yellow-400">{resumen.pendientes}</p>
+              <p className="text-[10px] text-yellow-300">Pendiente</p>
+            </button>
+            <button
+              onClick={() => setFiltroEstado(filtroEstado === "frio" ? "todos" : "frio")}
+              className={`p-3 rounded border text-center transition-all ${filtroEstado === "frio" ? "border-blue-400 ring-2 ring-blue-400/50" : "border-blue-800"} bg-blue-950/30 hover:border-blue-400`}
+            >
+              <p className="text-2xl font-bold text-blue-400">{resumen.frios}</p>
+              <p className="text-[10px] text-blue-300">Frio</p>
+            </button>
             <button
               onClick={() => setFiltroEstado(filtroEstado === "expirado" ? "todos" : "expirado")}
               className={`p-3 rounded border text-center transition-all ${filtroEstado === "expirado" ? "border-red-400 ring-2 ring-red-400/50" : "border-red-800"} bg-red-950/30 hover:border-red-400`}
             >
               <p className="text-2xl font-bold text-red-400">{resumen.expirados}</p>
-              <p className="text-xs text-red-300">Expirados</p>
+              <p className="text-[10px] text-red-300">Expirado</p>
             </button>
             <button
-              onClick={() => setFiltroEstado(filtroEstado === "critico" ? "todos" : "critico")}
-              className={`p-3 rounded border text-center transition-all ${filtroEstado === "critico" ? "border-orange-400 ring-2 ring-orange-400/50" : "border-orange-800"} bg-orange-950/30 hover:border-orange-400`}
+              onClick={() => setFiltroEstado(filtroEstado === "atendido" ? "todos" : "atendido")}
+              className={`p-3 rounded border text-center transition-all ${filtroEstado === "atendido" ? "border-green-400 ring-2 ring-green-400/50" : "border-green-800"} bg-green-950/30 hover:border-green-400`}
             >
-              <p className="text-2xl font-bold text-orange-400">{resumen.criticos}</p>
-              <p className="text-xs text-orange-300">Criticos</p>
-            </button>
-            <button
-              onClick={() => setFiltroEstado(filtroEstado === "alerta" ? "todos" : "alerta")}
-              className={`p-3 rounded border text-center transition-all ${filtroEstado === "alerta" ? "border-yellow-400 ring-2 ring-yellow-400/50" : "border-yellow-800"} bg-yellow-950/30 hover:border-yellow-400`}
-            >
-              <p className="text-2xl font-bold text-yellow-400">{resumen.alertas}</p>
-              <p className="text-xs text-yellow-300">Alerta</p>
-            </button>
-            <button
-              onClick={() => setFiltroEstado(filtroEstado === "ok" ? "todos" : "ok")}
-              className={`p-3 rounded border text-center transition-all ${filtroEstado === "ok" ? "border-green-400 ring-2 ring-green-400/50" : "border-green-800"} bg-green-950/30 hover:border-green-400`}
-            >
-              <p className="text-2xl font-bold text-green-400">{resumen.ok}</p>
-              <p className="text-xs text-green-300">OK</p>
+              <p className="text-2xl font-bold text-green-400">{resumen.atendidos}</p>
+              <p className="text-[10px] text-green-300">Atendido</p>
             </button>
           </div>
 
@@ -191,17 +199,24 @@ export default function SedePage() {
           )}
 
           {/* Resumen ejecutivo */}
-          {resumen.criticos > 0 && (
+          {resumen.demorados > 0 && (
             <div className="mb-4 p-3 rounded border border-orange-600 bg-orange-950/20">
               <p className="text-xs text-orange-300 font-medium">
-                ⚡ {resumen.criticos} conversacion{resumen.criticos > 1 ? "es" : ""} por vencer en menos de 2 horas. Responde ahora para no perder estos leads.
+                ⚡ {resumen.demorados} lead{resumen.demorados > 1 ? "s" : ""} sin responder hace más de 30 minutos. El lead se enfría — responde ahora.
+              </p>
+            </div>
+          )}
+          {resumen.pendientes > 0 && (
+            <div className="mb-4 p-3 rounded border border-yellow-800 bg-yellow-950/10">
+              <p className="text-xs text-yellow-300">
+                {resumen.pendientes} lead{resumen.pendientes > 1 ? "s" : ""} esperando respuesta (5-30 min). Aún estás a tiempo.
               </p>
             </div>
           )}
           {resumen.expirados > 0 && filtroEstado === "todos" && (
             <div className="mb-4 p-3 rounded border border-red-800 bg-red-950/10">
               <p className="text-xs text-red-300">
-                {resumen.expirados} lead{resumen.expirados > 1 ? "s" : ""} con ventana vencida. Usa el botón "Reactivar" para generar un mensaje de reconexión.
+                {resumen.expirados} lead{resumen.expirados > 1 ? "s" : ""} con ventana vencida. Usa "Reactivar" para reconectar.
               </p>
             </div>
           )}

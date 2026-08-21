@@ -579,6 +579,7 @@ function WhatsAppView({ token }: { token: string }) {
     sede: string | null;
     horasRestantes: number;
     minutosRestantes: number;
+    minutosSinResponder: number;
     estado: string;
     origin: string;
     isRead: boolean;
@@ -637,10 +638,11 @@ function WhatsAppView({ token }: { token: string }) {
 
   const resumenFiltrado = {
     total: convsPorSede.length,
+    demorados: convsPorSede.filter((c) => c.estado === "demorado").length,
+    pendientes: convsPorSede.filter((c) => c.estado === "pendiente").length,
+    frios: convsPorSede.filter((c) => c.estado === "frio").length,
     expirados: convsPorSede.filter((c) => c.estado === "expirado").length,
-    criticos: convsPorSede.filter((c) => c.estado === "critico").length,
-    alertas: convsPorSede.filter((c) => c.estado === "alerta").length,
-    ok: convsPorSede.filter((c) => c.estado === "ok").length,
+    atendidos: convsPorSede.filter((c) => c.estado === "atendido").length,
   };
 
   if (loading) return <p className="text-[var(--muted)] text-sm">Cargando conversaciones de Kommo...</p>;
@@ -669,34 +671,41 @@ function WhatsAppView({ token }: { token: string }) {
       </div>
 
       {/* Resumen - cajas clickeables */}
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-5 gap-2 mb-6">
+        <button
+          onClick={() => setFiltroEstado(filtroEstado === "demorado" ? "todos" : "demorado")}
+          className={`p-3 rounded border text-center transition-all ${filtroEstado === "demorado" ? "border-orange-400 ring-2 ring-orange-400/50" : "border-orange-800"} bg-orange-950/30 hover:border-orange-400`}
+        >
+          <p className="text-2xl font-bold text-orange-400">{resumenFiltrado.demorados}</p>
+          <p className="text-[10px] text-orange-300">Demorado (&gt;30m)</p>
+        </button>
+        <button
+          onClick={() => setFiltroEstado(filtroEstado === "pendiente" ? "todos" : "pendiente")}
+          className={`p-3 rounded border text-center transition-all ${filtroEstado === "pendiente" ? "border-yellow-400 ring-2 ring-yellow-400/50" : "border-yellow-800"} bg-yellow-950/30 hover:border-yellow-400`}
+        >
+          <p className="text-2xl font-bold text-yellow-400">{resumenFiltrado.pendientes}</p>
+          <p className="text-[10px] text-yellow-300">Pendiente (5-30m)</p>
+        </button>
+        <button
+          onClick={() => setFiltroEstado(filtroEstado === "frio" ? "todos" : "frio")}
+          className={`p-3 rounded border text-center transition-all ${filtroEstado === "frio" ? "border-blue-400 ring-2 ring-blue-400/50" : "border-blue-800"} bg-blue-950/30 hover:border-blue-400`}
+        >
+          <p className="text-2xl font-bold text-blue-400">{resumenFiltrado.frios}</p>
+          <p className="text-[10px] text-blue-300">Frio (&gt;2h)</p>
+        </button>
         <button
           onClick={() => setFiltroEstado(filtroEstado === "expirado" ? "todos" : "expirado")}
           className={`p-3 rounded border text-center transition-all ${filtroEstado === "expirado" ? "border-red-400 ring-2 ring-red-400/50" : "border-red-800"} bg-red-950/30 hover:border-red-400`}
         >
           <p className="text-2xl font-bold text-red-400">{resumenFiltrado.expirados}</p>
-          <p className="text-xs text-red-300">Expirados</p>
+          <p className="text-[10px] text-red-300">Expirado (&gt;24h)</p>
         </button>
         <button
-          onClick={() => setFiltroEstado(filtroEstado === "critico" ? "todos" : "critico")}
-          className={`p-3 rounded border text-center transition-all ${filtroEstado === "critico" ? "border-orange-400 ring-2 ring-orange-400/50" : "border-orange-800"} bg-orange-950/30 hover:border-orange-400`}
+          onClick={() => setFiltroEstado(filtroEstado === "atendido" ? "todos" : "atendido")}
+          className={`p-3 rounded border text-center transition-all ${filtroEstado === "atendido" ? "border-green-400 ring-2 ring-green-400/50" : "border-green-800"} bg-green-950/30 hover:border-green-400`}
         >
-          <p className="text-2xl font-bold text-orange-400">{resumenFiltrado.criticos}</p>
-          <p className="text-xs text-orange-300">Criticos (&lt;2h)</p>
-        </button>
-        <button
-          onClick={() => setFiltroEstado(filtroEstado === "alerta" ? "todos" : "alerta")}
-          className={`p-3 rounded border text-center transition-all ${filtroEstado === "alerta" ? "border-yellow-400 ring-2 ring-yellow-400/50" : "border-yellow-800"} bg-yellow-950/30 hover:border-yellow-400`}
-        >
-          <p className="text-2xl font-bold text-yellow-400">{resumenFiltrado.alertas}</p>
-          <p className="text-xs text-yellow-300">Alerta (&lt;6h)</p>
-        </button>
-        <button
-          onClick={() => setFiltroEstado(filtroEstado === "ok" ? "todos" : "ok")}
-          className={`p-3 rounded border text-center transition-all ${filtroEstado === "ok" ? "border-green-400 ring-2 ring-green-400/50" : "border-green-800"} bg-green-950/30 hover:border-green-400`}
-        >
-          <p className="text-2xl font-bold text-green-400">{resumenFiltrado.ok}</p>
-          <p className="text-xs text-green-300">OK (&gt;6h)</p>
+          <p className="text-2xl font-bold text-green-400">{resumenFiltrado.atendidos}</p>
+          <p className="text-[10px] text-green-300">Atendido (&lt;5m)</p>
         </button>
       </div>
 
@@ -714,8 +723,9 @@ function WhatsAppView({ token }: { token: string }) {
             key={conv.id}
             className={`p-4 rounded border bg-[var(--card)] ${
               conv.estado === "expirado" ? "border-red-600 bg-red-950/20" :
-              conv.estado === "critico" ? "border-orange-600 bg-orange-950/20" :
-              conv.estado === "alerta" ? "border-yellow-600 bg-yellow-950/10" :
+              conv.estado === "frio" ? "border-blue-600 bg-blue-950/20" :
+              conv.estado === "demorado" ? "border-orange-600 bg-orange-950/20" :
+              conv.estado === "pendiente" ? "border-yellow-600 bg-yellow-950/10" :
               "border-[var(--border)]"
             }`}
           >
@@ -735,16 +745,19 @@ function WhatsAppView({ token }: { token: string }) {
               <div className="text-right shrink-0">
                 <p className={`text-sm font-bold ${
                   conv.estado === "expirado" ? "text-red-400" :
-                  conv.estado === "critico" ? "text-orange-400" :
-                  conv.estado === "alerta" ? "text-yellow-400" :
+                  conv.estado === "frio" ? "text-blue-400" :
+                  conv.estado === "demorado" ? "text-orange-400" :
+                  conv.estado === "pendiente" ? "text-yellow-400" :
                   "text-green-400"
                 }`}>
                   {conv.estado === "expirado" ? "EXPIRADO" :
-                   conv.horasRestantes < 1 ? `${conv.minutosRestantes} min` :
-                   `${conv.horasRestantes}h`}
+                   conv.estado === "atendido" ? "OK" :
+                   conv.minutosSinResponder < 60 ? `${conv.minutosSinResponder} min` :
+                   `${Math.round(conv.minutosSinResponder / 60)}h`}
                 </p>
                 <p className="text-[10px] text-[var(--muted)]">
-                  {conv.estado === "expirado" ? "Ventana cerrada" : "restantes"}
+                  {conv.estado === "expirado" ? "Ventana cerrada" :
+                   conv.estado === "atendido" ? "Atendido" : "sin responder"}
                 </p>
               </div>
             </div>

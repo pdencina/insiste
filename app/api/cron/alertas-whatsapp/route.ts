@@ -37,8 +37,8 @@ export async function GET(request: NextRequest) {
     let emailsEnviados = 0;
 
     for (const sede of porSede) {
-      // Solo alertar si hay críticos o alertas (no expirados solamente)
-      const urgentes = sede.criticos + sede.alertas;
+      // Solo alertar si hay demorados o pendientes (leads que se están enfriando)
+      const urgentes = sede.demorados + sede.pendientes;
       if (urgentes === 0 || !sede.email) continue;
 
       // Verificar que no hayamos enviado alerta en la última hora
@@ -53,29 +53,29 @@ export async function GET(request: NextRequest) {
       if (alertaReciente && alertaReciente.length > 0) continue;
 
       // Construir email
-      const asunto = `⚠️ Alerta WhatsApp ${sede.sede}: ${sede.criticos} críticos, ${sede.alertas} en alerta`;
+      const asunto = `⚠️ Alerta WhatsApp ${sede.sede}: ${sede.demorados} demorados, ${sede.pendientes} pendientes`;
 
       let cuerpo = `Hola ${sede.responsable},\n\n`;
-      cuerpo += `Tienes conversaciones de WhatsApp que están por expirar en la sede ${sede.sede}:\n\n`;
+      cuerpo += `Tienes leads sin responder en la sede ${sede.sede}:\n\n`;
 
-      if (sede.criticos > 0) {
-        cuerpo += `🔴 CRÍTICOS (menos de 2 horas):\n`;
-        for (const conv of sede.conversaciones.filter((c) => c.estado === "critico")) {
-          cuerpo += `  • ${conv.contactName} — ${conv.minutosRestantes} min restantes\n`;
+      if (sede.demorados > 0) {
+        cuerpo += `🟠 DEMORADOS (más de 30 min sin respuesta):\n`;
+        for (const conv of sede.conversaciones.filter((c) => c.estado === "demorado")) {
+          cuerpo += `  • ${conv.contactName} — ${conv.minutosSinResponder} min sin responder\n`;
         }
         cuerpo += `\n`;
       }
 
-      if (sede.alertas > 0) {
-        cuerpo += `🟡 EN ALERTA (menos de 6 horas):\n`;
-        for (const conv of sede.conversaciones.filter((c) => c.estado === "alerta")) {
-          cuerpo += `  • ${conv.contactName} — ${conv.horasRestantes}h restantes\n`;
+      if (sede.pendientes > 0) {
+        cuerpo += `🟡 PENDIENTES (5-30 min sin respuesta):\n`;
+        for (const conv of sede.conversaciones.filter((c) => c.estado === "pendiente")) {
+          cuerpo += `  • ${conv.contactName} — ${conv.minutosSinResponder} min sin responder\n`;
         }
         cuerpo += `\n`;
       }
 
-      cuerpo += `Responde estos chats antes de que se cierre la ventana de 24h.\n`;
-      cuerpo += `Si se vencen, necesitarás un template para reconectar.\n\n`;
+      cuerpo += `Cada minuto que pasa, el lead se enfría. Responde ahora.\n`;
+      cuerpo += `Panel: https://insiste-nine.vercel.app/sede/${sede.sede.toLowerCase().replace(/\s+/g, "-")}\n\n`;
       cuerpo += `— Insiste (alerta automática)`;
 
       // Enviar email via Gmail
@@ -97,8 +97,8 @@ export async function GET(request: NextRequest) {
             sede: sede.sede,
             responsable: sede.responsable,
             email: sede.email,
-            criticos: sede.criticos,
-            alertas: sede.alertas,
+            demorados: sede.demorados,
+            pendientes: sede.pendientes,
           },
         });
 
@@ -114,8 +114,9 @@ export async function GET(request: NextRequest) {
       sedes: porSede.map((s) => ({
         sede: s.sede,
         responsable: s.responsable,
-        criticos: s.criticos,
-        alertas: s.alertas,
+        demorados: s.demorados,
+        pendientes: s.pendientes,
+        frios: s.frios,
         expirados: s.expirados,
       })),
     });

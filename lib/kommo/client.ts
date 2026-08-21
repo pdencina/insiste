@@ -7,6 +7,15 @@
 
 const VENTANA_HORAS = 24;
 
+// SLA Comercial — umbrales de tiempo de respuesta
+const SLA = {
+  ATENDIDO: 5,        // <5 min = ideal
+  PENDIENTE: 30,      // 5-30 min = aceptable
+  DEMORADO: 120,      // 30min-2h = urgente, se enfría
+  FRIO: 1440,         // 2h-24h = probablemente perdido
+  // >24h = expirado (ventana cerrada)
+};
+
 // Mapeo de responsables por sede (pipeline)
 export const RESPONSABLES_SEDE: Record<string, { nombre: string; email: string; sede: string }> = {
   "puente alto": { nombre: "Pr Pablo", email: "pencina@armglobal.org", sede: "Puente Alto" },
@@ -25,7 +34,9 @@ export interface KommoConversation {
   lastMessageAt: number;
   horasRestantes: number;
   minutosRestantes: number;
-  estado: "critico" | "alerta" | "ok" | "expirado";
+  minutosSinResponder: number;
+  estado: "atendido" | "pendiente" | "demorado" | "frio" | "expirado";
+  estadoLabel: string;
   isRead: boolean;
   origin: string;
 }
@@ -199,16 +210,26 @@ export async function getConversacionesAbiertas(): Promise<KommoConversation[]> 
     const horasTranscurridas = segundosTranscurridos / 3600;
     const horasRestantes = VENTANA_HORAS - horasTranscurridas;
     const minutosRestantes = Math.max(0, Math.round(horasRestantes * 60));
+    const minutosSinResponder = Math.round(segundosTranscurridos / 60);
 
+    // Clasificación por SLA comercial
     let estado: KommoConversation["estado"];
+    let estadoLabel: string;
     if (horasRestantes <= 0) {
       estado = "expirado";
-    } else if (horasRestantes <= 2) {
-      estado = "critico";
-    } else if (horasRestantes <= 6) {
-      estado = "alerta";
+      estadoLabel = "Expirado";
+    } else if (minutosSinResponder >= SLA.FRIO) {
+      estado = "frio";
+      estadoLabel = "Frío";
+    } else if (minutosSinResponder >= SLA.DEMORADO) {
+      estado = "demorado";
+      estadoLabel = "Demorado";
+    } else if (minutosSinResponder >= SLA.PENDIENTE) {
+      estado = "pendiente";
+      estadoLabel = "Pendiente";
     } else {
-      estado = "ok";
+      estado = "atendido";
+      estadoLabel = "Atendido";
     }
 
     const contactId = talk._embedded?.contacts?.[0]?.id ?? talk.contact_id;
@@ -230,18 +251,20 @@ export async function getConversacionesAbiertas(): Promise<KommoConversation[]> 
       lastMessageAt,
       horasRestantes: Math.max(0, parseFloat(horasRestantes.toFixed(1))),
       minutosRestantes,
+      minutosSinResponder,
       estado,
+      estadoLabel,
       isRead: talk.is_read ?? true,
       origin: talk.origin ?? "whatsapp",
     });
   }
 
-  // Ordenar: expirados y críticos primero
-  const orden = { expirado: 0, critico: 1, alerta: 2, ok: 3 };
+  // Ordenar: los que necesitan atención más urgente primero
+  const orden = { demorado: 0, pendiente: 1, frio: 2, expirado: 3, atendido: 4 };
   conversaciones.sort((a, b) => {
     const diff = orden[a.estado] - orden[b.estado];
     if (diff !== 0) return diff;
-    return a.horasRestantes - b.horasRestantes;
+    return b.minutosSinResponder - a.minutosSinResponder;
   });
 
   return conversaciones;
@@ -252,29 +275,37 @@ export async function getConversacionesAbiertas(): Promise<KommoConversation[]> 
  */
 export interface AlertaResumen {
   total: number;
+  atendidos: number;
+  pendientes: number;
+  demorados: number;
+  frios: number;
   expirados: number;
-  criticos: number;
-  alertas: number;
-  ok: number;
+  tiempoPromedioMin: number;
 }
 
 export interface AlertaPorSede {
   sede: string;
   responsable: string;
   email: string;
-  criticos: number;
-  alertas: number;
+  demorados: number;
+  pendientes: number;
+  frios: number;
   expirados: number;
   conversaciones: KommoConversation[];
 }
 
 export function calcularResumen(conversaciones: KommoConversation[]): AlertaResumen {
+  const tiempos = conversaciones.map((c) => c.minutosSinResponder);
+  const promedio = tiempos.length > 0 ? Math.round(tiempos.reduce((a, b) => a + b, 0) / tiempos.length) : 0;
+
   return {
     total: conversaciones.length,
+    atendidos: conversaciones.filter((c) => c.estado === "atendido").length,
+    pendientes: conversaciones.filter((c) => c.estado === "pendiente").length,
+    demorados: conversaciones.filter((c) => c.estado === "demorado").length,
+    frios: conversaciones.filter((c) => c.estado === "frio").length,
     expirados: conversaciones.filter((c) => c.estado === "expirado").length,
-    criticos: conversaciones.filter((c) => c.estado === "critico").length,
-    alertas: conversaciones.filter((c) => c.estado === "alerta").length,
-    ok: conversaciones.filter((c) => c.estado === "ok").length,
+    tiempoPromedioMin: promedio,
   };
 }
 
@@ -297,15 +328,14 @@ export function agruparPorSede(conversaciones: KommoConversation[]): AlertaPorSe
       sede,
       responsable: responsable?.nombre ?? "Sin asignar",
       email: responsable?.email ?? "",
-      criticos: convs.filter((c) => c.estado === "critico").length,
-      alertas: convs.filter((c) => c.estado === "alerta").length,
+      demorados: convs.filter((c) => c.estado === "demorado").length,
+      pendientes: convs.filter((c) => c.estado === "pendiente").length,
+      frios: convs.filter((c) => c.estado === "frio").length,
       expirados: convs.filter((c) => c.estado === "expirado").length,
-      conversaciones: convs.filter((c) => c.estado !== "ok"), // Solo los que necesitan atención
+      conversaciones: convs.filter((c) => c.estado !== "atendido"),
     });
   }
 
-  // Ordenar por urgencia (más críticos primero)
-  resultado.sort((a, b) => (b.criticos + b.alertas) - (a.criticos + a.alertas));
-
+  resultado.sort((a, b) => (b.demorados + b.pendientes) - (a.demorados + a.pendientes));
   return resultado;
 }
