@@ -10,7 +10,10 @@ import { getConversacionesAbiertas, calcularResumen } from "@/lib/kommo/client";
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const sedeAuth = request.headers.get("x-sede-auth");
+
+  // Autenticar: admin con Bearer token, o sede con x-sede-auth header
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}` && !sedeAuth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

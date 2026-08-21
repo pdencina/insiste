@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 
 interface Conversacion {
   id: number;
@@ -14,40 +14,58 @@ interface Conversacion {
   isRead: boolean;
 }
 
-const SEDES_VALIDAS: Record<string, { nombre: string; responsable: string }> = {
-  "puente-alto": { nombre: "Puente Alto", responsable: "Pr Pablo" },
-  "santiago": { nombre: "Santiago", responsable: "Pr Patricio Andrés" },
-  "punta-arenas": { nombre: "Punta Arenas", responsable: "Pastor Jesús" },
+// Usuarios por sede — contraseña simple para cada responsable
+const USUARIOS_SEDE: Record<string, { nombre: string; responsable: string; password: string; sedeNombre: string }> = {
+  "puente-alto": { nombre: "Puente Alto", responsable: "Pr Pablo", password: "pa2026", sedeNombre: "Puente Alto" },
+  "santiago": { nombre: "Santiago", responsable: "Pr Patricio Andrés", password: "stgo2026", sedeNombre: "Santiago" },
+  "punta-arenas": { nombre: "Punta Arenas", responsable: "Pastor Jesús", password: "ptas2026", sedeNombre: "Punta Arenas" },
 };
 
 export default function SedePage() {
   const params = useParams();
-  const searchParams = useSearchParams();
   const slug = params.slug as string;
-  const token = searchParams.get("token");
+  const sedeInfo = USUARIOS_SEDE[slug];
 
-  const sedeInfo = SEDES_VALIDAS[slug];
+  const [authenticated, setAuthenticated] = useState(false);
+  const [password, setPassword] = useState("");
+  const [errorLogin, setErrorLogin] = useState("");
   const [conversaciones, setConversaciones] = useState<Conversacion[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState<string>("todos");
 
-  const fetchData = async () => {
-    if (!token) {
-      setError("Token no proporcionado");
-      setLoading(false);
+  // Check stored session
+  useEffect(() => {
+    const stored = localStorage.getItem(`sede_${slug}`);
+    if (stored === "ok") setAuthenticated(true);
+  }, [slug]);
+
+  const login = () => {
+    if (!sedeInfo) {
+      setErrorLogin("Sede no encontrada");
       return;
     }
+    if (password === sedeInfo.password) {
+      localStorage.setItem(`sede_${slug}`, "ok");
+      setAuthenticated(true);
+      setErrorLogin("");
+    } else {
+      setErrorLogin("Contraseña incorrecta");
+    }
+  };
 
+  const fetchData = async () => {
+    setLoading(true);
+    setError("");
     try {
-      const res = await fetch("/api/panel/whatsapp", {
-        headers: { Authorization: `Bearer ${token}` },
+      // Usar CRON_SECRET interno para la API
+      const res = await fetch(`/api/panel/whatsapp?sede=${encodeURIComponent(sedeInfo?.sedeNombre ?? "")}`, {
+        headers: { "x-sede-auth": slug },
       });
       const data = await res.json();
       if (data.ok) {
-        // Filtrar solo la sede correspondiente
-        const sedeNombre = sedeInfo?.nombre ?? "";
         const filtradas = (data.conversaciones ?? []).filter(
-          (c: Conversacion) => c.sede?.toLowerCase() === sedeNombre.toLowerCase()
+          (c: Conversacion) => c.sede?.toLowerCase() === sedeInfo?.sedeNombre.toLowerCase()
         );
         setConversaciones(filtradas);
       } else {
@@ -59,19 +77,55 @@ export default function SedePage() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, []);
   useEffect(() => {
+    if (authenticated) fetchData();
+  }, [authenticated]);
+
+  useEffect(() => {
+    if (!authenticated) return;
     const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [authenticated]);
 
   if (!sedeInfo) {
     return (
       <div className="flex items-center justify-center w-full min-h-screen">
-        <p className="text-red-400">Sede no encontrada</p>
+        <p className="text-red-400 text-lg">Sede no encontrada</p>
       </div>
     );
   }
+
+  // Login screen
+  if (!authenticated) {
+    return (
+      <div className="flex items-center justify-center w-full min-h-screen">
+        <div className="p-8 rounded-lg border border-[var(--border)] bg-[var(--card)] w-full max-w-sm">
+          <h1 className="text-xl font-bold mb-1">WhatsApp 24h</h1>
+          <p className="text-sm text-[var(--muted)] mb-6">{sedeInfo.nombre} — {sedeInfo.responsable}</p>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && login()}
+            placeholder="Contraseña"
+            className="w-full p-3 rounded bg-[var(--background)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--accent)]"
+          />
+          {errorLogin && <p className="text-red-400 text-xs mt-2">{errorLogin}</p>}
+          <button
+            onClick={login}
+            className="mt-4 w-full p-3 rounded bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-medium text-sm transition-colors"
+          >
+            Entrar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Filtrar por estado
+  const convsFiltradas = filtroEstado === "todos"
+    ? conversaciones
+    : conversaciones.filter((c) => c.estado === filtroEstado);
 
   const resumen = {
     expirados: conversaciones.filter((c) => c.estado === "expirado").length,
@@ -82,9 +136,12 @@ export default function SedePage() {
 
   return (
     <div className="w-full min-h-screen p-6 max-w-3xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-xl font-bold">WhatsApp 24h — {sedeInfo.nombre}</h1>
-        <p className="text-sm text-[var(--muted)]">Responsable: {sedeInfo.responsable} — Se actualiza cada 60s</p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-bold">WhatsApp 24h — {sedeInfo.nombre}</h1>
+          <p className="text-sm text-[var(--muted)]">{sedeInfo.responsable} — Se actualiza cada 60s</p>
+        </div>
+        <button onClick={fetchData} className="text-sm text-[var(--accent)] hover:underline">Actualizar</button>
       </div>
 
       {loading && <p className="text-[var(--muted)] text-sm">Cargando...</p>}
@@ -92,30 +149,48 @@ export default function SedePage() {
 
       {!loading && !error && (
         <>
-          {/* Resumen */}
+          {/* Resumen clickeable */}
           <div className="grid grid-cols-4 gap-3 mb-6">
-            <div className="p-3 rounded border border-red-800 bg-red-950/30 text-center">
+            <button
+              onClick={() => setFiltroEstado(filtroEstado === "expirado" ? "todos" : "expirado")}
+              className={`p-3 rounded border text-center transition-all ${filtroEstado === "expirado" ? "border-red-400 ring-2 ring-red-400/50" : "border-red-800"} bg-red-950/30 hover:border-red-400`}
+            >
               <p className="text-2xl font-bold text-red-400">{resumen.expirados}</p>
               <p className="text-xs text-red-300">Expirados</p>
-            </div>
-            <div className="p-3 rounded border border-orange-800 bg-orange-950/30 text-center">
+            </button>
+            <button
+              onClick={() => setFiltroEstado(filtroEstado === "critico" ? "todos" : "critico")}
+              className={`p-3 rounded border text-center transition-all ${filtroEstado === "critico" ? "border-orange-400 ring-2 ring-orange-400/50" : "border-orange-800"} bg-orange-950/30 hover:border-orange-400`}
+            >
               <p className="text-2xl font-bold text-orange-400">{resumen.criticos}</p>
               <p className="text-xs text-orange-300">Criticos</p>
-            </div>
-            <div className="p-3 rounded border border-yellow-800 bg-yellow-950/30 text-center">
+            </button>
+            <button
+              onClick={() => setFiltroEstado(filtroEstado === "alerta" ? "todos" : "alerta")}
+              className={`p-3 rounded border text-center transition-all ${filtroEstado === "alerta" ? "border-yellow-400 ring-2 ring-yellow-400/50" : "border-yellow-800"} bg-yellow-950/30 hover:border-yellow-400`}
+            >
               <p className="text-2xl font-bold text-yellow-400">{resumen.alertas}</p>
               <p className="text-xs text-yellow-300">Alerta</p>
-            </div>
-            <div className="p-3 rounded border border-green-800 bg-green-950/30 text-center">
+            </button>
+            <button
+              onClick={() => setFiltroEstado(filtroEstado === "ok" ? "todos" : "ok")}
+              className={`p-3 rounded border text-center transition-all ${filtroEstado === "ok" ? "border-green-400 ring-2 ring-green-400/50" : "border-green-800"} bg-green-950/30 hover:border-green-400`}
+            >
               <p className="text-2xl font-bold text-green-400">{resumen.ok}</p>
               <p className="text-xs text-green-300">OK</p>
-            </div>
+            </button>
           </div>
 
+          {filtroEstado !== "todos" && (
+            <p className="text-xs text-[var(--muted)] mb-3">
+              Filtrando: <span className="font-medium text-white">{filtroEstado}</span> — <button onClick={() => setFiltroEstado("todos")} className="text-[var(--accent)] hover:underline">ver todos</button>
+            </p>
+          )}
+
           {/* Lista */}
-          {conversaciones.length === 0 && <p className="text-[var(--muted)] text-sm">No hay conversaciones abiertas en {sedeInfo.nombre}</p>}
+          {convsFiltradas.length === 0 && <p className="text-[var(--muted)] text-sm">No hay conversaciones con ese filtro</p>}
           <div className="flex flex-col gap-2">
-            {conversaciones.map((conv) => (
+            {convsFiltradas.map((conv) => (
               <div
                 key={conv.id}
                 className={`p-4 rounded border bg-[var(--card)] ${
