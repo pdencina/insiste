@@ -241,9 +241,11 @@ function ConversacionCard({ conv, slug, sedeNombre }: { conv: Conversacion; slug
       const data = await res.json();
       if (data.ok) {
         setMensajeIA(data.mensaje);
+      } else {
+        setMensajeIA(`Error: ${data.error || "No se pudo generar"}`);
       }
     } catch (err) {
-      console.error(err);
+      setMensajeIA(`Error de red: ${String(err)}`);
     }
     setGenerando(false);
   };
