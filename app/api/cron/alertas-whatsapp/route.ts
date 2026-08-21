@@ -53,30 +53,31 @@ export async function GET(request: NextRequest) {
       if (alertaReciente && alertaReciente.length > 0) continue;
 
       // Construir email
-      const asunto = `⚠️ Alerta WhatsApp ${sede.sede}: ${sede.demorados} demorados, ${sede.pendientes} pendientes`;
+      const asunto = `Alerta WhatsApp ${sede.sede}: ${sede.demorados} demorados, ${sede.pendientes} pendientes`;
 
       let cuerpo = `Hola ${sede.responsable},\n\n`;
-      cuerpo += `Tienes leads sin responder en la sede ${sede.sede}:\n\n`;
+      cuerpo += `Tienes leads sin responder en ${sede.sede}:\n\n`;
 
       if (sede.demorados > 0) {
-        cuerpo += `🟠 DEMORADOS (más de 30 min sin respuesta):\n`;
+        cuerpo += `DEMORADOS (mas de 30 min sin respuesta):\n`;
         for (const conv of sede.conversaciones.filter((c) => c.estado === "demorado")) {
-          cuerpo += `  • ${conv.contactName} — ${conv.minutosSinResponder} min sin responder\n`;
+          cuerpo += `  - ${conv.contactName} — ${formatearTiempo(conv.minutosSinResponder)} sin responder\n`;
         }
         cuerpo += `\n`;
       }
 
       if (sede.pendientes > 0) {
-        cuerpo += `🟡 PENDIENTES (5-30 min sin respuesta):\n`;
+        cuerpo += `PENDIENTES (5-30 min sin respuesta):\n`;
         for (const conv of sede.conversaciones.filter((c) => c.estado === "pendiente")) {
-          cuerpo += `  • ${conv.contactName} — ${conv.minutosSinResponder} min sin responder\n`;
+          cuerpo += `  - ${conv.contactName} — ${formatearTiempo(conv.minutosSinResponder)} sin responder\n`;
         }
         cuerpo += `\n`;
       }
 
-      cuerpo += `Cada minuto que pasa, el lead se enfría. Responde ahora.\n`;
-      cuerpo += `Panel: https://insiste-nine.vercel.app/sede/${sede.sede.toLowerCase().replace(/\s+/g, "-")}\n\n`;
-      cuerpo += `— Insiste (alerta automática)`;
+      cuerpo += `---\n`;
+      cuerpo += `Cada minuto que pasa, el lead se enfria. Responde ahora.\n\n`;
+      cuerpo += `Ver panel: https://insiste-nine.vercel.app/sede/${sede.sede.toLowerCase().replace(/\s+/g, "-")}\n\n`;
+      cuerpo += `-- Insiste (alerta automatica)`;
 
       // Enviar email via Gmail
       try {
@@ -127,14 +128,18 @@ export async function GET(request: NextRequest) {
 }
 
 function buildRawEmail(from: string, to: string, subject: string, body: string): string {
+  // Codificar subject como UTF-8 base64 para soportar emojis y acentos
+  const encodedSubject = `=?UTF-8?B?${Buffer.from(subject, "utf-8").toString("base64")}?=`;
+
   const lines = [
     `From: ${from}`,
     `To: ${to}`,
-    `Subject: ${subject}`,
+    `Subject: ${encodedSubject}`,
     `Content-Type: text/plain; charset="UTF-8"`,
+    `Content-Transfer-Encoding: base64`,
     `MIME-Version: 1.0`,
     "",
-    body,
+    Buffer.from(body, "utf-8").toString("base64"),
   ];
 
   return Buffer.from(lines.join("\r\n"), "utf-8")
@@ -142,4 +147,18 @@ function buildRawEmail(from: string, to: string, subject: string, body: string):
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
+}
+
+/**
+ * Formatea minutos a texto legible: "45 min", "2h 30min", "1 día"
+ */
+function formatearTiempo(minutos: number): string {
+  if (minutos < 60) return `${minutos} min`;
+  if (minutos < 1440) {
+    const h = Math.floor(minutos / 60);
+    const m = minutos % 60;
+    return m > 0 ? `${h}h ${m}min` : `${h}h`;
+  }
+  const dias = Math.floor(minutos / 1440);
+  return dias === 1 ? "1 día" : `${dias} días`;
 }
