@@ -576,6 +576,7 @@ function WhatsAppView({ token }: { token: string }) {
     id: number;
     contactName: string;
     leadName: string | null;
+    sede: string | null;
     horasRestantes: number;
     minutosRestantes: number;
     estado: string;
@@ -670,6 +671,9 @@ function WhatsAppView({ token }: { token: string }) {
                 </div>
                 {conv.leadName && (
                   <p className="text-xs text-[var(--muted)] mt-0.5">{conv.leadName}</p>
+                )}
+                {conv.sede && (
+                  <p className="text-[10px] mt-0.5 px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-300 inline-block">{conv.sede}</p>
                 )}
               </div>
               <div className="text-right shrink-0">

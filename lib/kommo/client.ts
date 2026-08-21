@@ -7,6 +7,13 @@
 
 const VENTANA_HORAS = 24;
 
+// Mapeo de responsables por sede (pipeline)
+export const RESPONSABLES_SEDE: Record<string, { nombre: string; email: string; sede: string }> = {
+  "puente alto": { nombre: "Pr Pablo", email: "pencina@armglobal.org", sede: "Puente Alto" },
+  "santiago": { nombre: "Pr Patricio Andrés", email: "paburgos@armglobal.org", sede: "Santiago" },
+  "punta arenas": { nombre: "Pastor Jesús", email: "jcamargo@armglobal.org", sede: "Punta Arenas" },
+};
+
 export interface KommoConversation {
   id: number;
   contactId: number;
@@ -14,7 +21,8 @@ export interface KommoConversation {
   leadId: number | null;
   leadName: string | null;
   pipelineName: string | null;
-  lastMessageAt: number; // Unix timestamp seconds
+  sede: string | null;
+  lastMessageAt: number;
   horasRestantes: number;
   minutosRestantes: number;
   estado: "critico" | "alerta" | "ok" | "expirado";
@@ -22,26 +30,139 @@ export interface KommoConversation {
   origin: string;
 }
 
-/**
- * Obtiene todas las conversaciones abiertas y calcula el countdown.
- */
-export async function getConversacionesAbiertas(): Promise<KommoConversation[]> {
+interface KommoApiOptions {
+  token: string;
+  subdomain: string;
+}
+
+function getKommoOptions(): KommoApiOptions {
   const token = process.env.KOMMO_TOKEN;
   const subdomain = process.env.KOMMO_SUBDOMAIN;
-
   if (!token || !subdomain) {
     throw new Error("Faltan variables KOMMO_TOKEN o KOMMO_SUBDOMAIN");
   }
+  return { token, subdomain };
+}
 
-  const baseUrl = `https://${subdomain}.kommo.com/api/v4`;
-
-  // Obtener conversaciones abiertas (is_in_work)
-  const response = await fetch(`${baseUrl}/talks?filter[is_in_work]=true&limit=250`, {
+async function kommoFetch(path: string, options?: KommoApiOptions): Promise<Response> {
+  const { token, subdomain } = options ?? getKommoOptions();
+  const url = `https://${subdomain}.kommo.com/api/v4${path}`;
+  return fetch(url, {
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
   });
+}
+
+/**
+ * Obtiene los pipelines de la cuenta para mapear a sedes.
+ */
+async function getPipelines(): Promise<Map<number, string>> {
+  const res = await kommoFetch("/leads/pipelines");
+  if (!res.ok) return new Map();
+
+  const data = await res.json();
+  const pipelines = data?._embedded?.pipelines ?? [];
+  const map = new Map<number, string>();
+
+  for (const pipeline of pipelines) {
+    map.set(pipeline.id, pipeline.name ?? `Pipeline #${pipeline.id}`);
+  }
+
+  return map;
+}
+
+/**
+ * Detecta la sede a partir del nombre del pipeline.
+ */
+function detectarSede(pipelineName: string | null): string | null {
+  if (!pipelineName) return null;
+  const lower = pipelineName.toLowerCase();
+
+  if (lower.includes("puente alto")) return "Puente Alto";
+  if (lower.includes("punta arenas")) return "Punta Arenas";
+  if (lower.includes("santiago")) return "Santiago";
+
+  // Fallback: buscar keywords más amplios
+  for (const key of Object.keys(RESPONSABLES_SEDE)) {
+    if (lower.includes(key)) return RESPONSABLES_SEDE[key].sede;
+  }
+
+  return pipelineName; // Si no matchea, mostrar el nombre original
+}
+
+/**
+ * Obtiene los nombres de contactos por IDs.
+ */
+async function getContactNames(contactIds: number[]): Promise<Map<number, string>> {
+  const map = new Map<number, string>();
+  if (contactIds.length === 0) return map;
+
+  // Kommo permite hasta 250 por request, procesar en batches
+  const batches = [];
+  for (let i = 0; i < contactIds.length; i += 50) {
+    batches.push(contactIds.slice(i, i + 50));
+  }
+
+  for (const batch of batches) {
+    try {
+      const query = batch.map((id) => `filter[id][]=${id}`).join("&");
+      const res = await kommoFetch(`/contacts?${query}&limit=50`);
+      if (!res.ok) continue;
+
+      const data = await res.json();
+      const contacts = data?._embedded?.contacts ?? [];
+      for (const contact of contacts) {
+        map.set(contact.id, contact.name ?? `Contacto #${contact.id}`);
+      }
+    } catch {
+      // Continuar con el siguiente batch
+    }
+  }
+
+  return map;
+}
+
+/**
+ * Obtiene leads por IDs para saber el pipeline.
+ */
+async function getLeadPipelines(leadIds: number[]): Promise<Map<number, { name: string; pipelineId: number }>> {
+  const map = new Map<number, { name: string; pipelineId: number }>();
+  if (leadIds.length === 0) return map;
+
+  const batches = [];
+  for (let i = 0; i < leadIds.length; i += 50) {
+    batches.push(leadIds.slice(i, i + 50));
+  }
+
+  for (const batch of batches) {
+    try {
+      const query = batch.map((id) => `filter[id][]=${id}`).join("&");
+      const res = await kommoFetch(`/leads?${query}&limit=50`);
+      if (!res.ok) continue;
+
+      const data = await res.json();
+      const leads = data?._embedded?.leads ?? [];
+      for (const lead of leads) {
+        map.set(lead.id, { name: lead.name ?? "", pipelineId: lead.pipeline_id });
+      }
+    } catch {
+      // Continuar
+    }
+  }
+
+  return map;
+}
+
+/**
+ * Obtiene todas las conversaciones abiertas con nombres y sedes.
+ */
+export async function getConversacionesAbiertas(): Promise<KommoConversation[]> {
+  const opts = getKommoOptions();
+
+  // Obtener conversaciones abiertas
+  const response = await kommoFetch("/talks?filter[is_in_work]=true&limit=250", opts);
 
   if (!response.ok) {
     const error = await response.text();
@@ -50,6 +171,24 @@ export async function getConversacionesAbiertas(): Promise<KommoConversation[]> 
 
   const data = await response.json();
   const talks = data?._embedded?.talks ?? [];
+
+  // Recopilar IDs para enriquecer
+  const contactIds: number[] = [];
+  const leadIds: number[] = [];
+
+  for (const talk of talks) {
+    const contactId = talk._embedded?.contacts?.[0]?.id ?? talk.contact_id;
+    if (contactId) contactIds.push(contactId);
+    const leadId = talk._embedded?.leads?.[0]?.id ?? talk.entity_id;
+    if (leadId) leadIds.push(leadId);
+  }
+
+  // Obtener datos en paralelo
+  const [contactNames, leadPipelines, pipelines] = await Promise.all([
+    getContactNames([...new Set(contactIds)]),
+    getLeadPipelines([...new Set(leadIds.filter(Boolean))]),
+    getPipelines(),
+  ]);
 
   const ahora = Math.floor(Date.now() / 1000);
   const conversaciones: KommoConversation[] = [];
@@ -72,17 +211,22 @@ export async function getConversacionesAbiertas(): Promise<KommoConversation[]> 
       estado = "ok";
     }
 
-    // Extraer info del contacto y lead
-    const contact = talk._embedded?.contacts?.[0];
-    const lead = talk._embedded?.leads?.[0];
+    const contactId = talk._embedded?.contacts?.[0]?.id ?? talk.contact_id;
+    const leadId = talk._embedded?.leads?.[0]?.id ?? talk.entity_id;
+
+    const contactName = contactNames.get(contactId) ?? `Contacto #${contactId}`;
+    const leadInfo = leadId ? leadPipelines.get(leadId) : null;
+    const pipelineName = leadInfo ? (pipelines.get(leadInfo.pipelineId) ?? null) : null;
+    const sede = detectarSede(pipelineName);
 
     conversaciones.push({
       id: talk.id,
-      contactId: contact?.id ?? talk.contact_id,
-      contactName: contact?.name ?? `Contacto #${talk.contact_id}`,
-      leadId: lead?.id ?? talk.entity_id ?? null,
-      leadName: lead?.name ?? null,
-      pipelineName: null, // Se enriquece después si es necesario
+      contactId,
+      contactName,
+      leadId: leadId ?? null,
+      leadName: leadInfo?.name ?? null,
+      pipelineName,
+      sede,
       lastMessageAt,
       horasRestantes: Math.max(0, parseFloat(horasRestantes.toFixed(1))),
       minutosRestantes,
@@ -104,7 +248,7 @@ export async function getConversacionesAbiertas(): Promise<KommoConversation[]> 
 }
 
 /**
- * Resumen de alertas para mostrar en el panel.
+ * Resumen de alertas por sede.
  */
 export interface AlertaResumen {
   total: number;
@@ -112,6 +256,16 @@ export interface AlertaResumen {
   criticos: number;
   alertas: number;
   ok: number;
+}
+
+export interface AlertaPorSede {
+  sede: string;
+  responsable: string;
+  email: string;
+  criticos: number;
+  alertas: number;
+  expirados: number;
+  conversaciones: KommoConversation[];
 }
 
 export function calcularResumen(conversaciones: KommoConversation[]): AlertaResumen {
@@ -122,4 +276,36 @@ export function calcularResumen(conversaciones: KommoConversation[]): AlertaResu
     alertas: conversaciones.filter((c) => c.estado === "alerta").length,
     ok: conversaciones.filter((c) => c.estado === "ok").length,
   };
+}
+
+export function agruparPorSede(conversaciones: KommoConversation[]): AlertaPorSede[] {
+  const porSede = new Map<string, KommoConversation[]>();
+
+  for (const conv of conversaciones) {
+    const sede = conv.sede ?? "Sin sede";
+    if (!porSede.has(sede)) porSede.set(sede, []);
+    porSede.get(sede)!.push(conv);
+  }
+
+  const resultado: AlertaPorSede[] = [];
+
+  for (const [sede, convs] of porSede) {
+    const sedeKey = sede.toLowerCase();
+    const responsable = RESPONSABLES_SEDE[sedeKey];
+
+    resultado.push({
+      sede,
+      responsable: responsable?.nombre ?? "Sin asignar",
+      email: responsable?.email ?? "",
+      criticos: convs.filter((c) => c.estado === "critico").length,
+      alertas: convs.filter((c) => c.estado === "alerta").length,
+      expirados: convs.filter((c) => c.estado === "expirado").length,
+      conversaciones: convs.filter((c) => c.estado !== "ok"), // Solo los que necesitan atención
+    });
+  }
+
+  // Ordenar por urgencia (más críticos primero)
+  resultado.sort((a, b) => (b.criticos + b.alertas) - (a.criticos + a.alertas));
+
+  return resultado;
 }
