@@ -10,14 +10,12 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { verificarPanel } from "@/lib/panel/sesion";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export async function POST(request: NextRequest) {
-  // Autenticar: admin o sede
-  const authHeader = request.headers.get("authorization");
-  const sedeAuth = request.headers.get("x-sede-auth");
-
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}` && !sedeAuth) {
+  // Sesión de sede firmada (x-sede-token) o admin (Bearer CRON_SECRET)
+  if (!verificarPanel(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

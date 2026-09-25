@@ -8,6 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { verificarPanel } from "@/lib/panel/sesion";
 import { calcularReporte, notasDeCalculo, semanaActual, textoReporte } from "@/lib/kommo/reporte";
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
@@ -16,9 +17,8 @@ const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const sedeAuth = request.headers.get("x-sede-auth");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}` && !sedeAuth) {
+  // Sesión de sede firmada (x-sede-token) o admin (Bearer CRON_SECRET)
+  if (!verificarPanel(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

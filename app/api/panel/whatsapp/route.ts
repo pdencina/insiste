@@ -7,17 +7,16 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { verificarPanel } from "@/lib/panel/sesion";
 import { getConversacionesAbiertas, calcularResumen, getSinClasificar } from "@/lib/kommo/client";
 
 // Kommo pagina de a 250 y el reporte/panel hace varias lecturas: dar margen
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const sedeAuth = request.headers.get("x-sede-auth");
 
-  // Autenticar: admin con Bearer token, o sede con x-sede-auth header
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}` && !sedeAuth) {
+  // Sesión de sede firmada (x-sede-token) o admin (Bearer CRON_SECRET)
+  if (!verificarPanel(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

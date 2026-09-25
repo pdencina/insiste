@@ -6,8 +6,9 @@ const SCOPES = [
   "https://www.googleapis.com/auth/gmail.send",
   "https://www.googleapis.com/auth/gmail.modify",
   "https://www.googleapis.com/auth/userinfo.email",
-  // Lectura del calendario: visitas agendadas/atendidas para el reporte de admisión
-  "https://www.googleapis.com/auth/calendar.readonly",
+  // Calendario: leer visitas (reporte, disponibilidad) y crear citas de visita desde el panel.
+  // calendar.events permite ver y crear eventos, sin administrar calendarios ni compartirlos.
+  "https://www.googleapis.com/auth/calendar.events",
 ];
 
 // Configuración de reintentos
@@ -61,7 +62,7 @@ export async function getGmailClient(cuentaId: string): Promise<gmail_v1.Gmail> 
 
 /**
  * Cliente de Google Calendar para la misma cuenta. Requiere que la cuenta se haya
- * conectado con el scope calendar.readonly (si no, la API responde 403).
+ * conectado con el scope calendar.events (si no, la API responde 403).
  */
 export async function getCalendarClient(cuentaId: string): Promise<calendar_v3.Calendar> {
   return google.calendar({ version: "v3", auth: await getAuthorizedClient(cuentaId) });

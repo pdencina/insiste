@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { PanelRespuestas, FilaSinAceptar } from "./respuestas";
 import { PanelReporte } from "./reporte";
+import { PanelAgenda } from "./agenda";
+import { fetchSede, guardarToken, tokenSede } from "./sesion";
 
 interface Conversacion {
   id: number;
@@ -47,11 +49,11 @@ function formatearEspera(minutos: number): string {
   return dias === 1 ? "1 día" : `${dias} días`;
 }
 
-// Usuarios por sede — contraseña simple para cada responsable
-const USUARIOS_SEDE: Record<string, { nombre: string; responsable: string; password: string; sedeNombre: string }> = {
-  "puente-alto": { nombre: "Puente Alto", responsable: "Pr Pablo", password: "pa2026", sedeNombre: "Puente Alto" },
-  "santiago": { nombre: "Santiago", responsable: "Pr Patricio Andrés", password: "stgo2026", sedeNombre: "Santiago" },
-  "punta-arenas": { nombre: "Punta Arenas", responsable: "Pastor Jesús", password: "ptas2026", sedeNombre: "Punta Arenas" },
+// Sedes del panel. La clave se valida en el servidor (/api/panel/login), no acá.
+const USUARIOS_SEDE: Record<string, { nombre: string; responsable: string; sedeNombre: string }> = {
+  "puente-alto": { nombre: "Puente Alto", responsable: "Pr Pablo", sedeNombre: "Puente Alto" },
+  "santiago": { nombre: "Santiago", responsable: "Pr Patricio Andrés", sedeNombre: "Santiago" },
+  "punta-arenas": { nombre: "Punta Arenas", responsable: "Pastor Jesús", sedeNombre: "Punta Arenas" },
 };
 
 export default function SedePage() {
@@ -71,23 +73,33 @@ export default function SedePage() {
   const [verTodosSinClasificar, setVerTodosSinClasificar] = useState(false);
   const [verRespondidos, setVerRespondidos] = useState(false);
 
-  // Check stored session
+  // Sesión guardada (token firmado por el servidor)
   useEffect(() => {
-    const stored = localStorage.getItem(`sede_${slug}`);
-    if (stored === "ok") setAuthenticated(true);
+    if (tokenSede(slug)) setAuthenticated(true);
   }, [slug]);
 
-  const login = () => {
+  const login = async () => {
     if (!sedeInfo) {
       setErrorLogin("Sede no encontrada");
       return;
     }
-    if (password === sedeInfo.password) {
-      localStorage.setItem(`sede_${slug}`, "ok");
-      setAuthenticated(true);
+    try {
+      const res = await fetch("/api/panel/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, clave: password }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setErrorLogin(data.error || "Contraseña incorrecta");
+        return;
+      }
+      guardarToken(slug, data.token);
+      setPassword("");
       setErrorLogin("");
-    } else {
-      setErrorLogin("Contraseña incorrecta");
+      setAuthenticated(true);
+    } catch (err) {
+      setErrorLogin(`Error de red: ${String(err)}`);
     }
   };
 
@@ -95,10 +107,7 @@ export default function SedePage() {
     setLoading(true);
     setError("");
     try {
-      // Usar CRON_SECRET interno para la API
-      const res = await fetch(`/api/panel/whatsapp?sede=${encodeURIComponent(sedeInfo?.sedeNombre ?? "")}`, {
-        headers: { "x-sede-auth": slug },
-      });
+      const res = await fetchSede(slug, `/api/panel/whatsapp?sede=${encodeURIComponent(sedeInfo?.sedeNombre ?? "")}`);
       const data = await res.json();
       if (data.ok) {
         const filtradas = (data.conversaciones ?? []).filter(
@@ -195,6 +204,8 @@ export default function SedePage() {
       {/* Fuera del bloque que se recarga cada 60s, para no perder lo escrito o generado */}
       <PanelRespuestas slug={slug} />
       <PanelReporte slug={slug} />
+      {/* La agenda lee y escribe el Google Calendar de Pablo: solo Puente Alto */}
+      {slug === "puente-alto" && <PanelAgenda slug={slug} />}
 
       {loading && <p className="text-[var(--muted)] text-sm">Cargando...</p>}
       {error && <p className="text-red-400 text-sm">Error: {error}</p>}
@@ -370,9 +381,9 @@ function ConversacionCard({ conv, slug, sedeNombre }: { conv: Conversacion; slug
   const generarMensaje = async () => {
     setGenerando(true);
     try {
-      const res = await fetch("/api/panel/reactivar", {
+      const res = await fetchSede(slug, "/api/panel/reactivar", {
         method: "POST",
-        headers: { "x-sede-auth": slug, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contactName: conv.contactName,
           leadName: conv.leadName,

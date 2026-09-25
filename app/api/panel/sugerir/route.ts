@@ -11,6 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { verificarPanel } from "@/lib/panel/sesion";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { PLANTILLAS } from "@/lib/kommo/plantillas";
 
@@ -31,9 +32,8 @@ REGLAS:
 Responde SOLO con JSON: {"ids": ["x.y", ...], "motivo": "una frase corta en español"}`;
 
 export async function POST(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const sedeAuth = request.headers.get("x-sede-auth");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}` && !sedeAuth) {
+  // Sesión de sede firmada (x-sede-token) o admin (Bearer CRON_SECRET)
+  if (!verificarPanel(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

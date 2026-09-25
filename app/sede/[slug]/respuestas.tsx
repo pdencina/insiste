@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { PLANTILLAS, type Plantilla } from "@/lib/kommo/plantillas";
+import { fetchSede } from "./sesion";
 
 type Sugerencia = Plantilla;
 
 async function pedirSugerencias(slug: string, mensaje: string, nombre?: string, contexto?: string) {
-  const res = await fetch("/api/panel/sugerir", {
+  const res = await fetchSede(slug, "/api/panel/sugerir", {
     method: "POST",
-    headers: { "x-sede-auth": slug, "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ mensaje, nombre, contexto }),
   });
   const data = await res.json();

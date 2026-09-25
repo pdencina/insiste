@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { fetchSede } from "./sesion";
 
 /** "YYYY-MM-DD" en hora Chile, desplazado `dias`. */
 function fechaChile(dias = 0): string {
@@ -31,7 +32,7 @@ export function PanelReporte({ slug }: { slug: string }) {
     setCargando(true);
     setError("");
     try {
-      const res = await fetch(`/api/panel/reporte?desde=${desde}&hasta=${hasta}`, { headers: { "x-sede-auth": slug } });
+      const res = await fetchSede(slug, `/api/panel/reporte?desde=${desde}&hasta=${hasta}`);
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "No se pudo generar");
       setTexto(data.texto);
