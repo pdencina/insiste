@@ -17,6 +17,30 @@ interface Conversacion {
   isRead: boolean;
 }
 
+interface ChatSinClasificar {
+  uid: string;
+  leadId: number | null;
+  contactId: number | null;
+  nombre: string;
+  pipelineName: string | null;
+  sede: string | null;
+  origen: string;
+  minutosEsperando: number;
+}
+
+const KOMMO_SUBDOMAIN = "contactoarschoolglobalcom";
+
+function formatearEspera(minutos: number): string {
+  if (minutos < 60) return `${minutos} min`;
+  if (minutos < 1440) {
+    const h = Math.floor(minutos / 60);
+    const m = minutos % 60;
+    return m > 0 ? `${h}h ${m}min` : `${h}h`;
+  }
+  const dias = Math.floor(minutos / 1440);
+  return dias === 1 ? "1 día" : `${dias} días`;
+}
+
 // Usuarios por sede — contraseña simple para cada responsable
 const USUARIOS_SEDE: Record<string, { nombre: string; responsable: string; password: string; sedeNombre: string }> = {
   "puente-alto": { nombre: "Puente Alto", responsable: "Pr Pablo", password: "pa2026", sedeNombre: "Puente Alto" },
@@ -36,6 +60,9 @@ export default function SedePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<string>("todos");
+  const [sinClasificar, setSinClasificar] = useState<ChatSinClasificar[]>([]);
+  const [sinClasificarAntiguos, setSinClasificarAntiguos] = useState(0);
+  const [verTodosSinClasificar, setVerTodosSinClasificar] = useState(false);
 
   // Check stored session
   useEffect(() => {
@@ -71,6 +98,12 @@ export default function SedePage() {
           (c: Conversacion) => c.sede?.toLowerCase() === sedeInfo?.sedeNombre.toLowerCase()
         );
         setConversaciones(filtradas);
+        // Chats sin aceptar: los de esta sede + los de entradas generales (sin sede)
+        const sinAceptar = (data.sinClasificar?.recientes ?? []).filter(
+          (c: ChatSinClasificar) => !c.sede || c.sede.toLowerCase() === sedeInfo?.sedeNombre.toLowerCase()
+        );
+        setSinClasificar(sinAceptar);
+        setSinClasificarAntiguos(data.sinClasificar?.antiguos ?? 0);
       } else {
         setError(data.error || "Error al cargar");
       }
@@ -153,6 +186,56 @@ export default function SedePage() {
 
       {!loading && !error && (
         <>
+          {/* Chats sin aceptar en Kommo */}
+          {sinClasificar.length > 0 && (
+            <div className="mb-6 p-4 rounded border border-red-600 bg-red-950/30">
+              <p className="text-sm font-bold text-red-300">
+                🔴 {sinClasificar.length} chat{sinClasificar.length > 1 ? "s" : ""} sin aceptar en Kommo
+              </p>
+              <p className="text-xs text-red-300/80 mt-1 mb-3">
+                Llegaron a &quot;Incoming leads&quot; y nadie los tomó. No aparecen en la lista de abajo. Acéptalos en Kommo y responde.
+              </p>
+              <div className="flex flex-col gap-1">
+                {(verTodosSinClasificar ? sinClasificar : sinClasificar.slice(0, 8)).map((chat) => (
+                  <div key={chat.uid} className="flex items-center justify-between gap-2 py-1 border-t border-red-900/50">
+                    <div className="min-w-0">
+                      <span className="text-sm">{chat.nombre}</span>
+                      <span className="text-[10px] text-[var(--muted)] ml-2">{chat.pipelineName ?? chat.origen}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`text-xs font-bold ${chat.minutosEsperando >= 15 ? "text-red-400" : "text-yellow-400"}`}>
+                        {formatearEspera(chat.minutosEsperando)}
+                      </span>
+                      <a
+                        href={chat.leadId
+                          ? `https://${KOMMO_SUBDOMAIN}.kommo.com/leads/detail/${chat.leadId}`
+                          : `https://${KOMMO_SUBDOMAIN}.kommo.com/leads/pipeline/`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2 py-1 rounded text-[10px] font-medium bg-red-600 hover:bg-red-700 text-white transition-colors"
+                      >
+                        Abrir
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {sinClasificar.length > 8 && (
+                <button
+                  onClick={() => setVerTodosSinClasificar(!verTodosSinClasificar)}
+                  className="mt-2 text-xs text-red-300 hover:underline"
+                >
+                  {verTodosSinClasificar ? "Ver menos" : `Ver los ${sinClasificar.length}`}
+                </button>
+              )}
+              {sinClasificarAntiguos > 0 && (
+                <p className="text-[10px] text-[var(--muted)] mt-2">
+                  + {sinClasificarAntiguos} con más de 7 días (no se listan; pendiente limpieza).
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Resumen clickeable */}
           <div className="grid grid-cols-5 gap-2 mb-6">
             <button
@@ -238,7 +321,7 @@ function ConversacionCard({ conv, slug, sedeNombre }: { conv: Conversacion; slug
   const [mensajeIA, setMensajeIA] = useState("");
   const [generando, setGenerando] = useState(false);
   const [copiado, setCopiado] = useState(false);
-  const subdomain = "contactoarschoolglobalcom";
+  const subdomain = KOMMO_SUBDOMAIN;
 
   const generarMensaje = async () => {
     setGenerando(true);

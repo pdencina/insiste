@@ -341,6 +341,188 @@ export function agruparPorSede(conversaciones: KommoConversation[]): AlertaPorSe
 }
 
 // ============================================================
+// CHATS SIN ACEPTAR (Incoming leads / unsorted)
+// ============================================================
+
+export interface ChatSinClasificar {
+  uid: string;
+  leadId: number | null;
+  contactId: number | null;
+  nombre: string;
+  pipelineName: string | null;
+  sede: string | null; // null = entrada general (ej: ARS_WHATSAPP), le sirve a cualquier sede
+  origen: string;
+  minutosEsperando: number;
+}
+
+export interface SinClasificarResultado {
+  recientes: ChatSinClasificar[];
+  antiguos: number; // más viejos que maxDias (probable basura, no se listan)
+}
+
+/**
+ * Chats que llegaron a "Incoming leads" y nadie aceptó todavía.
+ * No aparecen en /leads ni en /talks con lead asignado, por eso van aparte.
+ */
+export async function getSinClasificar(maxDias = 7): Promise<SinClasificarResultado> {
+  const pipelines = await getPipelines();
+  const ahora = Math.floor(Date.now() / 1000);
+  const recientes: ChatSinClasificar[] = [];
+  let antiguos = 0;
+
+  for (let page = 1; page <= 10; page++) {
+    const res = await kommoFetch(`/leads/unsorted?limit=250&page=${page}`);
+    if (!res.ok || res.status === 204) break;
+
+    const data = await res.json();
+    const items = data?._embedded?.unsorted ?? [];
+
+    for (const u of items) {
+      const minutosEsperando = Math.round((ahora - u.created_at) / 60);
+      if (minutosEsperando > maxDias * 1440) {
+        antiguos++;
+        continue;
+      }
+
+      const contacto = u._embedded?.contacts?.[0];
+      const pipelineName = pipelines.get(u.pipeline_id) ?? null;
+      const sede = detectarSede(pipelineName);
+
+      recientes.push({
+        uid: u.uid,
+        leadId: u._embedded?.leads?.[0]?.id ?? null,
+        contactId: contacto?.id ?? null,
+        nombre: u.metadata?.client?.name ?? contacto?.name ?? u.metadata?.from ?? "Sin nombre",
+        pipelineName,
+        // detectarSede devuelve el nombre del pipeline si no reconoce sede
+        sede: sede && sede !== pipelineName ? sede : null,
+        origen: u.metadata?.source_name ?? u.source_name ?? u.category ?? "chat",
+        minutosEsperando,
+      });
+    }
+
+    if (items.length < 250) break;
+  }
+
+  // Los más nuevos primero: son los que todavía se pueden atender a tiempo
+  recientes.sort((a, b) => a.minutosEsperando - b.minutosEsperando);
+  return { recientes, antiguos };
+}
+
+// ============================================================
+// SEGUIMIENTO: LEADS ESTANCADOS POR ETAPA
+// ============================================================
+
+// Días máximos sin movimiento por etapa (nombre en minúsculas, "contains").
+// Etapas terminales (matrícula, no le interesa, no califica...) no se revisan.
+const REGLAS_ESTANCADO: { etapa: string; dias: number }[] = [
+  { etapa: "calificación", dias: 1 },
+  { etapa: "información enviada", dias: 2 },
+  { etapa: "en negociación", dias: 3 },
+  { etapa: "visita", dias: 3 },
+  { etapa: "reconexión enviada", dias: 3 },
+  { etapa: "recontacto", dias: 3 },
+  { etapa: "esperando clasificación", dias: 2 },
+  { etapa: "con diagnostico", dias: 2 },
+  { etapa: "lo está pensando", dias: 5 },
+  { etapa: "remarketing pendiente", dias: 7 },
+];
+
+export interface LeadEstancado {
+  leadId: number;
+  nombre: string;
+  pipelineName: string;
+  etapa: string;
+  diasSinMovimiento: number;
+  limiteDias: number;
+  url: string;
+}
+
+export interface EstancadosPorSede {
+  sede: string;
+  leads: LeadEstancado[];
+}
+
+/**
+ * Revisa los pipelines activos de cada sede y devuelve los leads que
+ * llevan más días sin movimiento que lo permitido para su etapa.
+ * "Sin movimiento" = updated_at del lead (cambio de etapa, nota, campo).
+ */
+export async function getLeadsEstancados(): Promise<EstancadosPorSede[]> {
+  const { subdomain } = getKommoOptions();
+  const res = await kommoFetch("/leads/pipelines");
+  if (!res.ok || res.status === 204) return [];
+  const data = await res.json();
+
+  const pipelines = (data?._embedded?.pipelines ?? []).filter((p: { is_archive: boolean; name: string }) => {
+    const sede = detectarSede(p.name);
+    return !p.is_archive && sede && sede !== p.name;
+  });
+
+  const ahora = Math.floor(Date.now() / 1000);
+  const porSede = new Map<string, LeadEstancado[]>();
+  const contactIds: number[] = [];
+  const contactoDeLead = new Map<number, number>();
+
+  for (const pipeline of pipelines) {
+    const sede = detectarSede(pipeline.name)!;
+    const etapas = new Map<number, string>();
+    for (const s of pipeline._embedded?.statuses ?? []) etapas.set(s.id, s.name);
+
+    for (let page = 1; page <= 10; page++) {
+      const r = await kommoFetch(`/leads?filter[pipeline_id]=${pipeline.id}&with=contacts&limit=250&page=${page}`);
+      if (!r.ok || r.status === 204) break;
+      const d = await r.json();
+      const leads = d?._embedded?.leads ?? [];
+
+      for (const lead of leads) {
+        const etapa = etapas.get(lead.status_id) ?? "";
+        const regla = REGLAS_ESTANCADO.find((x) => etapa.toLowerCase().includes(x.etapa));
+        if (!regla) continue;
+
+        const dias = (ahora - lead.updated_at) / 86400;
+        if (dias < regla.dias) continue;
+
+        const contactId = lead._embedded?.contacts?.[0]?.id;
+        if (contactId) {
+          contactIds.push(contactId);
+          contactoDeLead.set(lead.id, contactId);
+        }
+
+        if (!porSede.has(sede)) porSede.set(sede, []);
+        porSede.get(sede)!.push({
+          leadId: lead.id,
+          nombre: lead.name || `Lead #${lead.id}`,
+          pipelineName: pipeline.name,
+          etapa,
+          diasSinMovimiento: Math.floor(dias),
+          limiteDias: regla.dias,
+          url: `https://${subdomain}.kommo.com/leads/detail/${lead.id}`,
+        });
+      }
+
+      if (leads.length < 250) break;
+    }
+  }
+
+  // Preferir el nombre del contacto (el del lead suele ser "Lead #123")
+  const nombres = await getContactNames([...new Set(contactIds)]);
+  const resultado: EstancadosPorSede[] = [];
+  for (const [sede, leads] of porSede) {
+    for (const l of leads) {
+      const cid = contactoDeLead.get(l.leadId);
+      const nombreContacto = cid ? nombres.get(cid) : undefined;
+      if (nombreContacto) l.nombre = nombreContacto;
+    }
+    // Los recién vencidos primero: son los que todavía se pueden recuperar
+    leads.sort((a, b) => a.diasSinMovimiento - b.diasSinMovimiento);
+    resultado.push({ sede, leads });
+  }
+
+  return resultado;
+}
+
+// ============================================================
 // REPORTE SEMANAL DE ADMISIÓN
 // ============================================================
 

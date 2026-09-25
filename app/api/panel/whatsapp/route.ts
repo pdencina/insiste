@@ -2,11 +2,12 @@
  * API Panel: WhatsApp Alerts
  *
  * Devuelve las conversaciones abiertas en Kommo con su countdown
- * de la ventana de 24h de WhatsApp.
+ * de la ventana de 24h de WhatsApp, más los chats que llegaron a
+ * "Incoming leads" y nadie aceptó todavía.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getConversacionesAbiertas, calcularResumen } from "@/lib/kommo/client";
+import { getConversacionesAbiertas, calcularResumen, getSinClasificar } from "@/lib/kommo/client";
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -18,13 +19,21 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const conversaciones = await getConversacionesAbiertas();
+    const [conversaciones, sinClasificar] = await Promise.all([
+      getConversacionesAbiertas(),
+      // Si falla, el panel sigue funcionando sin esta alerta
+      getSinClasificar().catch((err) => {
+        console.error("Error obteniendo chats sin aceptar:", err);
+        return { recientes: [], antiguos: 0 };
+      }),
+    ]);
     const resumen = calcularResumen(conversaciones);
 
     return NextResponse.json({
       ok: true,
       resumen,
       conversaciones,
+      sinClasificar,
     });
   } catch (err) {
     console.error("Error obteniendo conversaciones de Kommo:", err);
