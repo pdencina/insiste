@@ -66,6 +66,9 @@ export async function getVisitasCalendario(desde: number, hasta: number): Promis
     return { ok: true, visitas: visitas.filter((v) => !v.cancelada), calendario: calendarId };
   } catch (err) {
     const msg = String(err);
+    if (/accessNotConfigured|SERVICE_DISABLED|has not been used in project/i.test(msg)) {
+      return { ok: false, error: "La API de Google Calendar no está habilitada en el proyecto de Google Cloud de la app" };
+    }
     if (/insufficient|scope|403/i.test(msg)) {
       return { ok: false, error: "La cuenta no tiene permiso de calendario: reconectar Google o compartir el calendario" };
     }
