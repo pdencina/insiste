@@ -38,8 +38,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { mensaje, nombre, contexto } = await request.json();
-    if (!mensaje || typeof mensaje !== "string") {
+    const body = await request.json();
+    const mensaje = String(body.mensaje ?? "").trim();
+    const { nombre, contexto } = body;
+    if (!mensaje) {
       return NextResponse.json({ error: "Falta el mensaje de la familia" }, { status: 400 });
     }
 

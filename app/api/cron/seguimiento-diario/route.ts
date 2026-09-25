@@ -2,7 +2,7 @@
  * Cron: Seguimiento diario por sede (lunes a viernes, 8:30 hora Chile)
  *
  * Envía a cada responsable de sede un email con:
- * - Chats sin aceptar en "Incoming leads"
+ * - Chats en "Incoming leads" que nadie del equipo respondió
  * - Leads recién vencidos (pasaron el límite de días de su etapa, hasta 14 días
  *   sin movimiento): nombre + enlace, para recuperarlos hoy
  * - Leads acumulados (más de 14 días sin movimiento): solo conteo por etapa
@@ -44,7 +44,9 @@ export async function GET(request: NextRequest) {
       const responsable = RESPONSABLES_SEDE[sede.toLowerCase()];
       if (!responsable) continue;
 
-      const sinAceptar = sinClasificar.recientes.filter((c) => !c.sede || c.sede === sede);
+      const deLaSede = sinClasificar.recientes.filter((c) => !c.sede || c.sede === sede);
+      const sinAceptar = deLaSede.filter((c) => !c.respondido);
+      const respondidosSinAceptar = deLaSede.length - sinAceptar.length;
       const recientes = leads.filter((l) => l.diasSinMovimiento <= DIAS_RECUPERABLE);
       const acumulados = leads.filter((l) => l.diasSinMovimiento > DIAS_RECUPERABLE);
       if (sinAceptar.length === 0 && recientes.length === 0) continue;
@@ -52,8 +54,8 @@ export async function GET(request: NextRequest) {
       correos.push({
         sede,
         email: responsable.email,
-        asunto: `Seguimiento ${sede} (${hoy}): ${sinAceptar.length} sin aceptar, ${recientes.length} por recuperar`,
-        cuerpo: armarCuerpo(responsable.nombre, sede, sinAceptar, sinClasificar, recientes, acumulados),
+        asunto: `Seguimiento ${sede} (${hoy}): ${sinAceptar.length} sin responder, ${recientes.length} por recuperar`,
+        cuerpo: armarCuerpo(responsable.nombre, sede, sinAceptar, respondidosSinAceptar, sinClasificar, recientes, acumulados),
       });
     }
 
@@ -114,6 +116,7 @@ function armarCuerpo(
   nombre: string,
   sede: string,
   sinAceptar: SinClasificarResultado["recientes"],
+  respondidosSinAceptar: number,
   sinClasificar: SinClasificarResultado,
   recientes: LeadEstancado[],
   acumulados: LeadEstancado[]
@@ -123,13 +126,14 @@ function armarCuerpo(
   cuerpo += `Este es el seguimiento de hoy para ${sede}.\n\n`;
 
   if (sinAceptar.length > 0) {
-    cuerpo += `1) CHATS SIN ACEPTAR EN KOMMO (${sinAceptar.length})\n`;
-    cuerpo += `Llegaron a "Incoming leads" en los últimos 7 días y nadie los tomó:\n`;
+    cuerpo += `1) CHATS SIN RESPONDER (${sinAceptar.length})\n`;
+    cuerpo += `Están en "Incoming leads" (últimos 7 días) y nadie del equipo respondió su último mensaje:\n`;
     for (const c of sinAceptar.slice(0, MAX_LISTADOS)) {
       const url = c.leadId ? `https://${subdomain}.kommo.com/leads/detail/${c.leadId}` : "";
-      cuerpo += `  - ${c.nombre} (${c.pipelineName ?? c.origen}) — esperando ${formatearTiempo(c.minutosEsperando)} ${url}\n`;
+      cuerpo += `  - ${c.nombre} (${c.pipelineName ?? c.origen}) — sin respuesta hace ${formatearTiempo(c.minutosEsperando)} ${url}\n`;
     }
     if (sinAceptar.length > MAX_LISTADOS) cuerpo += `  ... y ${sinAceptar.length - MAX_LISTADOS} más (ver panel)\n`;
+    if (respondidosSinAceptar > 0) cuerpo += `  (+ ${respondidosSinAceptar} ya respondidos pero sin aceptar: acéptalos y muévelos a su etapa)\n`;
     if (sinClasificar.antiguos > 0) cuerpo += `  (+ ${sinClasificar.antiguos} con más de 7 días, pendientes de limpieza)\n`;
     cuerpo += `\n`;
   }

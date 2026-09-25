@@ -27,6 +27,7 @@ interface ChatSinClasificar {
   sede: string | null;
   origen: string;
   mensaje: string | null;
+  respondido: boolean;
   minutosEsperando: number;
 }
 
@@ -65,6 +66,7 @@ export default function SedePage() {
   const [sinClasificar, setSinClasificar] = useState<ChatSinClasificar[]>([]);
   const [sinClasificarAntiguos, setSinClasificarAntiguos] = useState(0);
   const [verTodosSinClasificar, setVerTodosSinClasificar] = useState(false);
+  const [verRespondidos, setVerRespondidos] = useState(false);
 
   // Check stored session
   useEffect(() => {
@@ -160,6 +162,9 @@ export default function SedePage() {
     );
   }
 
+  const sinResponder = sinClasificar.filter((c) => !c.respondido);
+  const respondidosSinAceptar = sinClasificar.filter((c) => c.respondido);
+
   // Filtrar por estado
   const convsFiltradas = filtroEstado === "todos"
     ? conversaciones
@@ -190,17 +195,17 @@ export default function SedePage() {
         <>
           <PanelRespuestas slug={slug} />
 
-          {/* Chats sin aceptar en Kommo */}
-          {sinClasificar.length > 0 && (
-            <div className="mb-6 p-4 rounded border border-red-600 bg-red-950/30">
+          {/* Chats en "Incoming leads": sin respuesta (urgente) y respondidos pero sin aceptar */}
+          {sinResponder.length > 0 && (
+            <div className="mb-4 p-4 rounded border border-red-600 bg-red-950/30">
               <p className="text-sm font-bold text-red-300">
-                🔴 {sinClasificar.length} chat{sinClasificar.length > 1 ? "s" : ""} sin aceptar en Kommo
+                🔴 {sinResponder.length} chat{sinResponder.length > 1 ? "s" : ""} sin responder
               </p>
               <p className="text-xs text-red-300/80 mt-1 mb-3">
-                Llegaron a &quot;Incoming leads&quot; y nadie los tomó. No aparecen en la lista de abajo. Acéptalos en Kommo y responde.
+                Están en &quot;Incoming leads&quot; y nadie del equipo respondió su último mensaje. No aparecen en la lista de abajo.
               </p>
               <div className="flex flex-col gap-1">
-                {(verTodosSinClasificar ? sinClasificar : sinClasificar.slice(0, 8)).map((chat) => (
+                {(verTodosSinClasificar ? sinResponder : sinResponder.slice(0, 8)).map((chat) => (
                   <FilaSinAceptar
                     key={chat.uid}
                     slug={slug}
@@ -215,17 +220,47 @@ export default function SedePage() {
                   />
                 ))}
               </div>
-              {sinClasificar.length > 8 && (
+              {sinResponder.length > 8 && (
                 <button
                   onClick={() => setVerTodosSinClasificar(!verTodosSinClasificar)}
                   className="mt-2 text-xs text-red-300 hover:underline"
                 >
-                  {verTodosSinClasificar ? "Ver menos" : `Ver los ${sinClasificar.length}`}
+                  {verTodosSinClasificar ? "Ver menos" : `Ver los ${sinResponder.length}`}
                 </button>
+              )}
+            </div>
+          )}
+          {(respondidosSinAceptar.length > 0 || sinClasificarAntiguos > 0) && (
+            <div className="mb-6 p-3 rounded border border-[var(--border)] bg-[var(--card)]">
+              {respondidosSinAceptar.length > 0 && (
+                <button onClick={() => setVerRespondidos(!verRespondidos)} className="w-full flex items-center justify-between text-left">
+                  <span className="text-xs text-[var(--muted)]">
+                    ✅ {respondidosSinAceptar.length} respondido{respondidosSinAceptar.length > 1 ? "s" : ""} pero sin aceptar — acéptalos en Kommo y muévelos a su etapa
+                  </span>
+                  <span className="text-[10px] text-[var(--accent)]">{verRespondidos ? "Ocultar" : "Ver"}</span>
+                </button>
+              )}
+              {verRespondidos && (
+                <div className="flex flex-col gap-1 mt-2">
+                  {respondidosSinAceptar.map((chat) => (
+                    <FilaSinAceptar
+                    key={chat.uid}
+                    slug={slug}
+                    nombre={chat.nombre}
+                    mensaje={chat.mensaje}
+                    canal={chat.pipelineName ?? chat.origen}
+                    espera={formatearEspera(chat.minutosEsperando)}
+                    urgente={false}
+                    url={chat.leadId
+                      ? `https://${KOMMO_SUBDOMAIN}.kommo.com/leads/detail/${chat.leadId}`
+                      : `https://${KOMMO_SUBDOMAIN}.kommo.com/leads/pipeline/`}
+                  />
+                  ))}
+                </div>
               )}
               {sinClasificarAntiguos > 0 && (
                 <p className="text-[10px] text-[var(--muted)] mt-2">
-                  + {sinClasificarAntiguos} con más de 7 días (no se listan; pendiente limpieza).
+                  + {sinClasificarAntiguos} con más de 7 días en &quot;Incoming leads&quot; (no se listan; pendiente limpieza).
                 </p>
               )}
             </div>

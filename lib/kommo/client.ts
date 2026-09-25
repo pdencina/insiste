@@ -352,8 +352,11 @@ export interface ChatSinClasificar {
   pipelineName: string | null;
   sede: string | null; // null = entrada general (ej: ARS_WHATSAPP), le sirve a cualquier sede
   origen: string;
-  /** Último mensaje de la familia (suele ser el primero que escribió) */
+  /** Último mensaje de la familia (suele ser el primero que escribió). null en comentarios de Instagram */
   mensaje: string | null;
+  /** true si una persona del equipo ya respondió después del último mensaje de la familia */
+  respondido: boolean;
+  /** Minutos desde el último mensaje de la familia (o desde que llegó, si no hay registro) */
   minutosEsperando: number;
 }
 
@@ -390,6 +393,10 @@ export async function getSinClasificar(maxDias = 7): Promise<SinClasificarResult
       const pipelineName = pipelines.get(u.pipeline_id) ?? null;
       const sede = detectarSede(pipelineName);
 
+      // Kommo manda un ID numérico en vez del texto para comentarios de Instagram
+      const texto = typeof u.metadata?.last_message_text === "string" ? u.metadata.last_message_text.trim() : "";
+      const mensaje = texto && !/^\d+$/.test(texto) ? texto : null;
+
       recientes.push({
         uid: u.uid,
         leadId: u._embedded?.leads?.[0]?.id ?? null,
@@ -399,7 +406,8 @@ export async function getSinClasificar(maxDias = 7): Promise<SinClasificarResult
         // detectarSede devuelve el nombre del pipeline si no reconoce sede
         sede: sede && sede !== pipelineName ? sede : null,
         origen: u.metadata?.source_name ?? u.source_name ?? u.category ?? "chat",
-        mensaje: u.metadata?.last_message_text || null,
+        mensaje,
+        respondido: false,
         minutosEsperando,
       });
     }
@@ -407,9 +415,44 @@ export async function getSinClasificar(maxDias = 7): Promise<SinClasificarResult
     if (items.length < 250) break;
   }
 
-  // Los más nuevos primero: son los que todavía se pueden atender a tiempo
-  recientes.sort((a, b) => a.minutosEsperando - b.minutosEsperando);
+  // Cruzar con mensajes de chat: ¿alguien del equipo respondió después del último mensaje de la familia?
+  const desde = ahora - maxDias * 86400;
+  const [entrantes, salientes] = await Promise.all([
+    ultimoMensajePorLead("incoming_chat_message", desde, false),
+    ultimoMensajePorLead("outgoing_chat_message", desde, true),
+  ]);
+  for (const chat of recientes) {
+    if (!chat.leadId) continue;
+    const ultimoEntrante = entrantes.get(chat.leadId);
+    const ultimaRespuesta = salientes.get(chat.leadId);
+    if (ultimoEntrante) chat.minutosEsperando = Math.round((ahora - ultimoEntrante) / 60);
+    chat.respondido = Boolean(ultimaRespuesta && (!ultimoEntrante || ultimaRespuesta >= ultimoEntrante));
+  }
+
+  // Sin respuesta primero y, dentro de cada grupo, los más nuevos (todavía se pueden atender a tiempo)
+  recientes.sort((a, b) => Number(a.respondido) - Number(b.respondido) || a.minutosEsperando - b.minutosEsperando);
   return { recientes, antiguos };
+}
+
+/**
+ * Último mensaje de chat por lead desde `desde` (unix). Con soloHumanos, ignora
+ * los mensajes automáticos (created_by = 0: Salesbot / sistema).
+ */
+async function ultimoMensajePorLead(tipo: string, desde: number, soloHumanos: boolean): Promise<Map<number, number>> {
+  const map = new Map<number, number>();
+  for (let page = 1; page <= 20; page++) {
+    const res = await kommoFetch(`/events?filter[type]=${tipo}&filter[created_at][from]=${desde}&limit=100&page=${page}`);
+    if (!res.ok || res.status === 204) break;
+    const data = await res.json();
+    const eventos = data?._embedded?.events ?? [];
+    for (const ev of eventos) {
+      if (ev.entity_type !== "lead") continue;
+      if (soloHumanos && !ev.created_by) continue;
+      if (ev.created_at > (map.get(ev.entity_id) ?? 0)) map.set(ev.entity_id, ev.created_at);
+    }
+    if (eventos.length < 100) break;
+  }
+  return map;
 }
 
 // ============================================================
