@@ -4,12 +4,14 @@
  * Lo usan el cron del viernes (borrador en Gmail) y el botón "Reporte" del panel.
  * Todo se calcula desde Kommo para un rango de fechas (hora Chile):
  * - Visitas / matrículas: leads que ENTRARON a esas etapas en el rango
- * - Visitas agendadas próxima semana: tareas tipo "Meeting" con fecha la semana siguiente
+ * - Visitas: Google Calendar (eventos con "visita" en el título); si no está disponible,
+ *   tareas tipo "Meeting" de Kommo o, en último caso, entradas a la etapa VISITA
  * - Gestión de conversaciones: mensajes de chat entrantes/salientes (persona vs bot)
  * - Contactos por interno: notas del lead que mencionan "interno" / "WhatsApp directo"
  */
 
 import { kommoFetch, obtenerCambiosDeEtapa, contarLeadsPorPipeline, type ReporteSede } from "@/lib/kommo/client";
+import { getVisitasCalendario } from "@/lib/google/calendario";
 
 export const PIPELINES_REPORTE = {
   playgroup: "PLAYGROUP PUENTE ALTO",
@@ -24,9 +26,14 @@ export interface DatosReporte {
   desde: number;
   hasta: number;
   visitasAtendidas: number;
-  visitasAtendidasFuente: "reuniones" | "etapa";
-  visitasProximaSemana: number;
-  hayReunionesRegistradas: boolean;
+  /** De dónde salen las visitas: calendario > tareas Reunión de Kommo > etapa VISITA */
+  visitasFuente: "calendario" | "reuniones" | "etapa";
+  /** null = no se puede calcular (completar a mano) */
+  visitasProximaSemana: number | null;
+  /** Visitas contadas (fecha + título), para verificar en las notas internas */
+  visitasDetalle: string[];
+  /** Por qué no se usó el calendario, si falló */
+  calendarioError: string | null;
   matriculasPlaygroup: number;
   matriculasArSchool: number;
   leadsNuevos: { playgroup: number; arSchool: number };
@@ -165,20 +172,45 @@ export async function calcularReporte(desdeFecha: string, hastaFecha: string): P
   const contactosInterno = notasPA.filter((n) => /interno|whatsapp directo/i.test(n.params?.text ?? "")).length;
 
   // --- Visitas ---
-  const reunionesPA = tareas.filter((t) => leadsPA.has(t.entity_id));
-  const reunionesAtendidas = reunionesPA.filter((t) => t.is_completed && t.complete_till >= desde && t.complete_till <= hasta).length;
   const lunesSiguiente = inicioDiaChile(fechaDesde(hastaFecha, diasHastaLunes(hastaFecha)));
-  const reunionesProxima = reunionesPA.filter((t) => !t.is_completed && t.complete_till >= lunesSiguiente && t.complete_till < lunesSiguiente + 7 * 86400).length;
-  const visitasPorEtapa = (playgroup?.visitas ?? 0) + (arSchool?.visitas ?? 0);
+  const finProxima = lunesSiguiente + 7 * 86400;
+  const ahora = Math.floor(Date.now() / 1000);
+  const cal = await getVisitasCalendario(desde, finProxima);
+
+  let visitasAtendidas: number;
+  let visitasProximaSemana: number | null;
+  let visitasFuente: DatosReporte["visitasFuente"];
+  let visitasDetalle: string[] = [];
+  const reunionesPA = tareas.filter((t) => leadsPA.has(t.entity_id));
+  if (cal.ok) {
+    // Atendidas = visitas del período que ya ocurrieron; próxima semana = lunes a domingo siguiente
+    const atendidas = cal.visitas.filter((v) => v.inicio >= desde && v.inicio <= Math.min(hasta, ahora));
+    const proximas = cal.visitas.filter((v) => v.inicio >= lunesSiguiente && v.inicio < finProxima);
+    visitasAtendidas = atendidas.length;
+    visitasProximaSemana = proximas.length;
+    visitasFuente = "calendario";
+    const fmt = (v: { titulo: string; inicio: number }) =>
+      `${new Date(v.inicio * 1000).toLocaleString("es-CL", { timeZone: "America/Santiago", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · ${v.titulo}`;
+    visitasDetalle = [...atendidas.map((v) => `atendida: ${fmt(v)}`), ...proximas.map((v) => `próxima: ${fmt(v)}`)];
+  } else if (reunionesPA.length > 0) {
+    visitasAtendidas = reunionesPA.filter((t) => t.is_completed && t.complete_till >= desde && t.complete_till <= hasta).length;
+    visitasProximaSemana = reunionesPA.filter((t) => !t.is_completed && t.complete_till >= lunesSiguiente && t.complete_till < finProxima).length;
+    visitasFuente = "reuniones";
+  } else {
+    visitasAtendidas = (playgroup?.visitas ?? 0) + (arSchool?.visitas ?? 0);
+    visitasProximaSemana = null;
+    visitasFuente = "etapa";
+  }
 
   return {
     rango: textoRango(desdeFecha, hastaFecha),
     desde,
     hasta,
-    visitasAtendidas: reunionesPA.length > 0 ? reunionesAtendidas : visitasPorEtapa,
-    visitasAtendidasFuente: reunionesPA.length > 0 ? "reuniones" : "etapa",
-    visitasProximaSemana: reunionesProxima,
-    hayReunionesRegistradas: reunionesPA.length > 0,
+    visitasAtendidas,
+    visitasFuente,
+    visitasProximaSemana,
+    visitasDetalle,
+    calendarioError: cal.ok ? null : cal.error,
     matriculasPlaygroup: playgroup?.matriculas ?? 0,
     matriculasArSchool: arSchool?.matriculas ?? 0,
     leadsNuevos: {
@@ -212,7 +244,7 @@ export function textoReporte(r: DatosReporte): string {
   let t = `REPORTE GESTIÓN ADMISIÓN\n\n`;
   t += `Fecha informada: ${r.rango}\n`;
   t += `Visitas atendidas: ${r.visitasAtendidas}\n`;
-  t += `Visitas agendadas próxima semana: ${r.hayReunionesRegistradas ? r.visitasProximaSemana : "___ (completar)"}\n`;
+  t += `Visitas agendadas próxima semana: ${r.visitasProximaSemana ?? "___ (completar)"}\n`;
   t += `Cierre de matrículas Playgroup: ${r.matriculasPlaygroup}\n`;
   t += `Cierre de matrículas AR school: ${r.matriculasArSchool}\n\n`;
 
@@ -229,13 +261,15 @@ export function textoReporte(r: DatosReporte): string {
 
 /** Notas internas sobre cómo se calculó (para revisar antes de enviar; no van al equipo). */
 export function notasDeCalculo(r: DatosReporte): string {
+  const fuente = {
+    calendario: "Visitas: eventos de Google Calendar con \"visita\" en el título (atendidas = ya ocurrieron en el período; próximas = lunes a domingo siguiente).",
+    reuniones: "Visitas: tareas tipo Reunión de Kommo (atendidas = completadas en el período).",
+    etapa: "Visitas atendidas: leads que entraron a la etapa VISITA (aprox.: no distingue agendada de realizada). Próxima semana: completar a mano.",
+  }[r.visitasFuente];
   const lineas = [
-    `Visitas atendidas: ${r.visitasAtendidasFuente === "reuniones"
-      ? "tareas tipo Reunión completadas en el período."
-      : "leads que entraron a la etapa VISITA en el período (aprox.: la etapa no distingue agendada de realizada)."}`,
-    r.hayReunionesRegistradas
-      ? "Visitas próxima semana: tareas tipo Reunión con fecha la semana siguiente."
-      : "Visitas próxima semana: no hay visitas registradas como tarea tipo Reunión en Kommo; completar a mano.",
+    fuente,
+    ...(r.calendarioError ? [`Calendario no disponible: ${r.calendarioError}.`] : []),
+    ...r.visitasDetalle.map((v) => `  ${v}`),
     "Leads respondidos: leads con al menos un mensaje tuyo (no del bot) en el período.",
     "Sin respuesta de la familia: respondiste y la familia no volvió a escribir (hasta hoy).",
     "Familias sin respuesta: escribieron en el período y su último mensaje no tiene respuesta de una persona.",

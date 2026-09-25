@@ -1,4 +1,4 @@
-import { google, type gmail_v1 } from "googleapis";
+import { google, type gmail_v1, type calendar_v3 } from "googleapis";
 import { createServiceClient } from "@/lib/supabase/client";
 
 const SCOPES = [
@@ -6,6 +6,8 @@ const SCOPES = [
   "https://www.googleapis.com/auth/gmail.send",
   "https://www.googleapis.com/auth/gmail.modify",
   "https://www.googleapis.com/auth/userinfo.email",
+  // Lectura del calendario: visitas agendadas/atendidas para el reporte de admisión
+  "https://www.googleapis.com/auth/calendar.readonly",
 ];
 
 // Configuración de reintentos
@@ -54,6 +56,21 @@ export async function exchangeCodeForTokens(code: string) {
  * Maneja el refresh automático del access token cuando expira.
  */
 export async function getGmailClient(cuentaId: string): Promise<gmail_v1.Gmail> {
+  return google.gmail({ version: "v1", auth: await getAuthorizedClient(cuentaId) });
+}
+
+/**
+ * Cliente de Google Calendar para la misma cuenta. Requiere que la cuenta se haya
+ * conectado con el scope calendar.readonly (si no, la API responde 403).
+ */
+export async function getCalendarClient(cuentaId: string): Promise<calendar_v3.Calendar> {
+  return google.calendar({ version: "v3", auth: await getAuthorizedClient(cuentaId) });
+}
+
+/**
+ * Cliente OAuth2 autenticado para una cuenta, con refresh automático del access token.
+ */
+async function getAuthorizedClient(cuentaId: string) {
   const supabase = createServiceClient();
 
   const { data: cuenta, error } = await supabase
@@ -128,7 +145,7 @@ export async function getGmailClient(cuentaId: string): Promise<gmail_v1.Gmail> 
     oauth2Client.setCredentials({ access_token: cuenta.access_token });
   }
 
-  return google.gmail({ version: "v1", auth: oauth2Client });
+  return oauth2Client;
 }
 
 /**
