@@ -35,8 +35,9 @@ function iguales(a: string, b: string): boolean {
 
 /** Valida la clave de una sede y devuelve un token, o null si no corresponde. */
 export function iniciarSesion(slug: string, clave: string): string | null {
-  const esperada = CLAVES[slug];
-  if (!esperada || !iguales(clave, esperada)) return null;
+  const esperada = CLAVES[slug]?.trim();
+  // Se ignoran espacios al inicio/fin (autocompletado del navegador o del celular)
+  if (!esperada || !iguales(clave.trim(), esperada)) return null;
   const expira = Math.floor(Date.now() / 1000) + DIAS_SESION * 86400;
   const datos = `${slug}.${expira}`;
   return `${datos}.${firmar(datos)}`;
