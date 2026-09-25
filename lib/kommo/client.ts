@@ -172,16 +172,27 @@ async function getLeadPipelines(leadIds: number[]): Promise<Map<number, { name: 
 export async function getConversacionesAbiertas(): Promise<KommoConversation[]> {
   const opts = getKommoOptions();
 
-  // Obtener conversaciones abiertas
-  const response = await kommoFetch("/talks?filter[is_in_work]=true&limit=250", opts);
+  // Obtener TODAS las conversaciones abiertas (Kommo pagina de a 250).
+  // Solo se muestran las con movimiento en los últimos DIAS_PANEL días: las más
+  // viejas ya expiraron hace rato y solo agregan ruido (y requests de enriquecimiento).
+  const DIAS_PANEL = 7;
+  const limite = Math.floor(Date.now() / 1000) - DIAS_PANEL * 86400;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- respuesta cruda de Kommo, igual que el resto del archivo
+  const talks: any[] = [];
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Kommo API error ${response.status}: ${error}`);
+  for (let page = 1; page <= 20; page++) {
+    const response = await kommoFetch(`/talks?filter[is_in_work]=true&limit=250&page=${page}`, opts);
+    if (response.status === 204) break;
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Kommo API error ${response.status}: ${error}`);
+    }
+
+    const data = await response.json();
+    const pagina = data?._embedded?.talks ?? [];
+    talks.push(...pagina.filter((t: { updated_at?: number; created_at: number }) => (t.updated_at ?? t.created_at) >= limite));
+    if (pagina.length < 250) break;
   }
-
-  const data = await response.json();
-  const talks = data?._embedded?.talks ?? [];
 
   // Recopilar IDs para enriquecer
   const contactIds: number[] = [];
