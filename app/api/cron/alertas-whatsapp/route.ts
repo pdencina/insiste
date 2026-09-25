@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
       cuerpo += `Tienes leads sin responder en ${sede.sede}:\n\n`;
 
       if (sede.demorados > 0) {
-        cuerpo += `DEMORADOS (mas de 30 min sin respuesta):\n`;
+        cuerpo += `DEMORADOS (la familia espera hace mas de 30 min):\n`;
         for (const conv of sede.conversaciones.filter((c) => c.estado === "demorado")) {
           cuerpo += `  - ${conv.contactName} — ${formatearTiempo(conv.minutosSinResponder)} sin responder\n`;
         }
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
       }
 
       if (sede.pendientes > 0) {
-        cuerpo += `PENDIENTES (5-30 min sin respuesta):\n`;
+        cuerpo += `PENDIENTES (la familia espera hace menos de 30 min):\n`;
         for (const conv of sede.conversaciones.filter((c) => c.estado === "pendiente")) {
           cuerpo += `  - ${conv.contactName} — ${formatearTiempo(conv.minutosSinResponder)} sin responder\n`;
         }

@@ -7,13 +7,13 @@
 
 const VENTANA_HORAS = 24;
 
-// SLA Comercial — umbrales de tiempo de respuesta
+// SLA Comercial — minutos que la FAMILIA lleva esperando desde su último mensaje.
+// Si nosotros (persona o bot) escribimos al final, la conversación queda "atendido"
+// (en pantalla: "Respondido") y no cuenta para el SLA.
 const SLA = {
-  ATENDIDO: 5,        // <5 min = ideal
-  PENDIENTE: 30,      // 5-30 min = aceptable
-  DEMORADO: 120,      // 30min-2h = urgente, se enfría
-  FRIO: 1440,         // 2h-24h = probablemente perdido
-  // >24h = expirado (ventana cerrada)
+  PENDIENTE: 30,      // <30 min = pendiente, aún a tiempo
+  DEMORADO: 120,      // 30min-2h = demorado, se enfría
+  // 2h-24h = frío; >24h = expirado (ventana de WhatsApp cerrada sin respuesta)
 };
 
 // Mapeo de responsables por sede (pipeline)
@@ -55,7 +55,7 @@ function getKommoOptions(): KommoApiOptions {
   return { token, subdomain };
 }
 
-async function kommoFetch(path: string, options?: KommoApiOptions): Promise<Response> {
+export async function kommoFetch(path: string, options?: KommoApiOptions): Promise<Response> {
   const { token, subdomain } = options ?? getKommoOptions();
   const url = `https://${subdomain}.kommo.com/api/v4${path}`;
   return fetch(url, {
@@ -211,46 +211,55 @@ export async function getConversacionesAbiertas(): Promise<KommoConversation[]> 
     if (leadId) leadIds.push(leadId);
   }
 
-  // Obtener datos en paralelo
-  const [contactNames, leadPipelines, pipelines] = await Promise.all([
+  // Obtener datos en paralelo. Los mensajes de chat dicen quién escribió al final:
+  // el movimiento de la conversación (updated_at) también cambia con NUESTROS mensajes.
+  const desdeMensajes = limite - 86400;
+  const [contactNames, leadPipelines, pipelines, ultimoEntrante, ultimoSaliente] = await Promise.all([
     getContactNames([...new Set(contactIds)]),
     getLeadPipelines([...new Set(leadIds.filter(Boolean))]),
     getPipelines(),
+    ultimoMensajePorLead("incoming_chat_message", desdeMensajes, false),
+    ultimoMensajePorLead("outgoing_chat_message", desdeMensajes, false),
   ]);
 
   const ahora = Math.floor(Date.now() / 1000);
   const conversaciones: KommoConversation[] = [];
 
   for (const talk of talks) {
-    const lastMessageAt = talk.updated_at ?? talk.created_at;
-    const segundosTranscurridos = ahora - lastMessageAt;
-    const horasTranscurridas = segundosTranscurridos / 3600;
-    const horasRestantes = VENTANA_HORAS - horasTranscurridas;
-    const minutosRestantes = Math.max(0, Math.round(horasRestantes * 60));
-    const minutosSinResponder = Math.round(segundosTranscurridos / 60);
-
-    // Clasificación por SLA comercial
-    let estado: KommoConversation["estado"];
-    let estadoLabel: string;
-    if (horasRestantes <= 0) {
-      estado = "expirado";
-      estadoLabel = "Expirado";
-    } else if (minutosSinResponder >= SLA.FRIO) {
-      estado = "frio";
-      estadoLabel = "Frío";
-    } else if (minutosSinResponder >= SLA.DEMORADO) {
-      estado = "demorado";
-      estadoLabel = "Demorado";
-    } else if (minutosSinResponder >= SLA.PENDIENTE) {
-      estado = "pendiente";
-      estadoLabel = "Pendiente";
-    } else {
-      estado = "atendido";
-      estadoLabel = "Atendido";
-    }
-
     const contactId = talk._embedded?.contacts?.[0]?.id ?? talk.contact_id;
     const leadId = talk._embedded?.leads?.[0]?.id ?? talk.entity_id;
+
+    const entrante = leadId ? ultimoEntrante.get(leadId) : undefined;
+    const saliente = leadId ? ultimoSaliente.get(leadId) : undefined;
+    // La familia espera respuesta si su último mensaje es posterior al nuestro (persona o bot)
+    const familiaEspera = Boolean(entrante && (!saliente || entrante > saliente));
+
+    // La ventana de 24h de WhatsApp corre desde el último mensaje DE LA FAMILIA
+    const lastMessageAt = entrante ?? talk.updated_at ?? talk.created_at;
+    const horasRestantes = VENTANA_HORAS - (ahora - lastMessageAt) / 3600;
+    const minutosRestantes = Math.max(0, Math.round(horasRestantes * 60));
+    // Minutos que la familia lleva esperando (o desde nuestro último mensaje, si ya respondimos)
+    const minutosSinResponder = Math.round((ahora - (familiaEspera ? entrante! : (saliente ?? lastMessageAt))) / 60);
+
+    // Clasificación por SLA comercial (solo aplica si la familia está esperando)
+    let estado: KommoConversation["estado"];
+    let estadoLabel: string;
+    if (!familiaEspera) {
+      estado = "atendido";
+      estadoLabel = "Respondido";
+    } else if (horasRestantes <= 0) {
+      estado = "expirado";
+      estadoLabel = "Expirado sin respuesta";
+    } else if (minutosSinResponder >= SLA.DEMORADO) {
+      estado = "frio";
+      estadoLabel = "Frío";
+    } else if (minutosSinResponder >= SLA.PENDIENTE) {
+      estado = "demorado";
+      estadoLabel = "Demorado";
+    } else {
+      estado = "pendiente";
+      estadoLabel = "Pendiente";
+    }
 
     const contactName = contactNames.get(contactId) ?? `Contacto #${contactId}`;
     const leadInfo = leadId ? leadPipelines.get(leadId) : null;

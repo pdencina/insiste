@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { PanelRespuestas, FilaSinAceptar } from "./respuestas";
+import { PanelReporte } from "./reporte";
 
 interface Conversacion {
   id: number;
@@ -14,7 +15,9 @@ interface Conversacion {
   sede: string | null;
   horasRestantes: number;
   minutosRestantes: number;
+  minutosSinResponder: number;
   estado: string;
+  estadoLabel: string;
   isRead: boolean;
 }
 
@@ -189,12 +192,15 @@ export default function SedePage() {
         <button onClick={fetchData} className="text-sm text-[var(--accent)] hover:underline">Actualizar</button>
       </div>
 
+      {/* Fuera del bloque que se recarga cada 60s, para no perder lo escrito o generado */}
+      <PanelRespuestas slug={slug} />
+      <PanelReporte slug={slug} />
+
       {loading && <p className="text-[var(--muted)] text-sm">Cargando...</p>}
       {error && <p className="text-red-400 text-sm">Error: {error}</p>}
 
       {!loading && !error && (
         <>
-          <PanelRespuestas slug={slug} />
 
           {/* Chats en "Incoming leads": sin respuesta (urgente) y respondidos pero sin aceptar */}
           {sinResponder.length > 0 && (
@@ -274,35 +280,35 @@ export default function SedePage() {
               className={`p-3 rounded border text-center transition-all ${filtroEstado === "demorado" ? "border-orange-400 ring-2 ring-orange-400/50" : "border-orange-800"} bg-orange-950/30 hover:border-orange-400`}
             >
               <p className="text-2xl font-bold text-orange-400">{resumen.demorados}</p>
-              <p className="text-[10px] text-orange-300">Demorado</p>
+              <p className="text-[10px] text-orange-300">Demorado (+30 min)</p>
             </button>
             <button
               onClick={() => setFiltroEstado(filtroEstado === "pendiente" ? "todos" : "pendiente")}
               className={`p-3 rounded border text-center transition-all ${filtroEstado === "pendiente" ? "border-yellow-400 ring-2 ring-yellow-400/50" : "border-yellow-800"} bg-yellow-950/30 hover:border-yellow-400`}
             >
               <p className="text-2xl font-bold text-yellow-400">{resumen.pendientes}</p>
-              <p className="text-[10px] text-yellow-300">Pendiente</p>
+              <p className="text-[10px] text-yellow-300">Pendiente (-30 min)</p>
             </button>
             <button
               onClick={() => setFiltroEstado(filtroEstado === "frio" ? "todos" : "frio")}
               className={`p-3 rounded border text-center transition-all ${filtroEstado === "frio" ? "border-blue-400 ring-2 ring-blue-400/50" : "border-blue-800"} bg-blue-950/30 hover:border-blue-400`}
             >
               <p className="text-2xl font-bold text-blue-400">{resumen.frios}</p>
-              <p className="text-[10px] text-blue-300">Frio</p>
+              <p className="text-[10px] text-blue-300">Frío (+2h)</p>
             </button>
             <button
               onClick={() => setFiltroEstado(filtroEstado === "expirado" ? "todos" : "expirado")}
               className={`p-3 rounded border text-center transition-all ${filtroEstado === "expirado" ? "border-red-400 ring-2 ring-red-400/50" : "border-red-800"} bg-red-950/30 hover:border-red-400`}
             >
               <p className="text-2xl font-bold text-red-400">{resumen.expirados}</p>
-              <p className="text-[10px] text-red-300">Expirado</p>
+              <p className="text-[10px] text-red-300">Expirado sin respuesta</p>
             </button>
             <button
               onClick={() => setFiltroEstado(filtroEstado === "atendido" ? "todos" : "atendido")}
               className={`p-3 rounded border text-center transition-all ${filtroEstado === "atendido" ? "border-green-400 ring-2 ring-green-400/50" : "border-green-800"} bg-green-950/30 hover:border-green-400`}
             >
               <p className="text-2xl font-bold text-green-400">{resumen.atendidos}</p>
-              <p className="text-[10px] text-green-300">Atendido</p>
+              <p className="text-[10px] text-green-300">Respondido</p>
             </button>
           </div>
 
@@ -316,21 +322,28 @@ export default function SedePage() {
           {resumen.demorados > 0 && (
             <div className="mb-4 p-3 rounded border border-orange-600 bg-orange-950/20">
               <p className="text-xs text-orange-300 font-medium">
-                ⚡ {resumen.demorados} lead{resumen.demorados > 1 ? "s" : ""} sin responder hace más de 30 minutos. El lead se enfría — responde ahora.
+                ⚡ {resumen.demorados} familia{resumen.demorados > 1 ? "s" : ""} esperando tu respuesta hace más de 30 minutos. Se enfría — responde ahora.
               </p>
             </div>
           )}
           {resumen.pendientes > 0 && (
             <div className="mb-4 p-3 rounded border border-yellow-800 bg-yellow-950/10">
               <p className="text-xs text-yellow-300">
-                {resumen.pendientes} lead{resumen.pendientes > 1 ? "s" : ""} esperando respuesta (5-30 min). Aún estás a tiempo.
+                {resumen.pendientes} familia{resumen.pendientes > 1 ? "s" : ""} esperando respuesta (menos de 30 min). Aún estás a tiempo.
+              </p>
+            </div>
+          )}
+          {resumen.frios > 0 && (
+            <div className="mb-4 p-3 rounded border border-blue-800 bg-blue-950/10">
+              <p className="text-xs text-blue-300">
+                {resumen.frios} familia{resumen.frios > 1 ? "s" : ""} esperando hace más de 2 horas. Todavía estás dentro de la ventana de 24h.
               </p>
             </div>
           )}
           {resumen.expirados > 0 && filtroEstado === "todos" && (
             <div className="mb-4 p-3 rounded border border-red-800 bg-red-950/10">
               <p className="text-xs text-red-300">
-                {resumen.expirados} lead{resumen.expirados > 1 ? "s" : ""} con ventana vencida. Usa "Reactivar" para reconectar.
+                {resumen.expirados} familia{resumen.expirados > 1 ? "s" : ""} escribieron y la ventana de 24h cerró sin respuesta. Usa &quot;Reactivar&quot; para reconectar.
               </p>
             </div>
           )}
@@ -393,9 +406,10 @@ function ConversacionCard({ conv, slug, sedeNombre }: { conv: Conversacion; slug
     <div
       className={`p-4 rounded border bg-[var(--card)] ${
         conv.estado === "expirado" ? "border-red-600 bg-red-950/20" :
-        conv.estado === "critico" ? "border-orange-600 bg-orange-950/20" :
-        conv.estado === "alerta" ? "border-yellow-600 bg-yellow-950/10" :
-        "border-[var(--border)]"
+        conv.estado === "frio" ? "border-blue-600 bg-blue-950/20" :
+        conv.estado === "demorado" ? "border-orange-600 bg-orange-950/20" :
+        conv.estado === "pendiente" ? "border-yellow-600 bg-yellow-950/10" :
+        "border-[var(--border)] opacity-70"
       }`}
     >
       <div className="flex items-center justify-between">
@@ -429,20 +443,32 @@ function ConversacionCard({ conv, slug, sedeNombre }: { conv: Conversacion; slug
               Ver en Kommo
             </a>
           </div>
-          {/* Timer */}
-          <div className="text-right ml-2">
+          {/* Estado y tiempos: cuánto espera la familia y cuánto queda de la ventana de 24h */}
+          <div className="text-right ml-2 min-w-[96px]">
+            <p className={`text-[10px] font-medium ${
+              conv.estado === "expirado" ? "text-red-300" :
+              conv.estado === "frio" ? "text-blue-300" :
+              conv.estado === "demorado" ? "text-orange-300" :
+              conv.estado === "pendiente" ? "text-yellow-300" :
+              "text-green-300"
+            }`}>
+              {conv.estadoLabel}
+            </p>
             <p className={`text-sm font-bold ${
               conv.estado === "expirado" ? "text-red-400" :
-              conv.estado === "critico" ? "text-orange-400" :
-              conv.estado === "alerta" ? "text-yellow-400" :
+              conv.estado === "frio" ? "text-blue-400" :
+              conv.estado === "demorado" ? "text-orange-400" :
+              conv.estado === "pendiente" ? "text-yellow-400" :
               "text-green-400"
             }`}>
-              {conv.estado === "expirado" ? "EXPIRADO" :
-               conv.horasRestantes < 1 ? `${conv.minutosRestantes} min` :
-               `${conv.horasRestantes}h`}
+              {formatearEspera(conv.minutosSinResponder)}
             </p>
             <p className="text-[10px] text-[var(--muted)]">
-              {conv.estado === "expirado" ? "Ventana cerrada" : "restantes"}
+              {conv.estado === "atendido" ? "desde tu respuesta" : "esperando"}
+              {" · "}
+              {conv.minutosRestantes <= 0 ? "ventana cerrada" :
+               conv.horasRestantes < 1 ? `${conv.minutosRestantes} min de ventana` :
+               `${conv.horasRestantes}h de ventana`}
             </p>
           </div>
         </div>
