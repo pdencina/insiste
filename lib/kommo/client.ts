@@ -352,6 +352,8 @@ export interface ChatSinClasificar {
   pipelineName: string | null;
   sede: string | null; // null = entrada general (ej: ARS_WHATSAPP), le sirve a cualquier sede
   origen: string;
+  /** Último mensaje de la familia (suele ser el primero que escribió) */
+  mensaje: string | null;
   minutosEsperando: number;
 }
 
@@ -397,6 +399,7 @@ export async function getSinClasificar(maxDias = 7): Promise<SinClasificarResult
         // detectarSede devuelve el nombre del pipeline si no reconoce sede
         sede: sede && sede !== pipelineName ? sede : null,
         origen: u.metadata?.source_name ?? u.source_name ?? u.category ?? "chat",
+        mensaje: u.metadata?.last_message_text || null,
         minutosEsperando,
       });
     }

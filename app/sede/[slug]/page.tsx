@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
+import { PanelRespuestas, FilaSinAceptar } from "./respuestas";
 
 interface Conversacion {
   id: number;
@@ -25,6 +26,7 @@ interface ChatSinClasificar {
   pipelineName: string | null;
   sede: string | null;
   origen: string;
+  mensaje: string | null;
   minutosEsperando: number;
 }
 
@@ -186,6 +188,8 @@ export default function SedePage() {
 
       {!loading && !error && (
         <>
+          <PanelRespuestas slug={slug} />
+
           {/* Chats sin aceptar en Kommo */}
           {sinClasificar.length > 0 && (
             <div className="mb-6 p-4 rounded border border-red-600 bg-red-950/30">
@@ -197,27 +201,18 @@ export default function SedePage() {
               </p>
               <div className="flex flex-col gap-1">
                 {(verTodosSinClasificar ? sinClasificar : sinClasificar.slice(0, 8)).map((chat) => (
-                  <div key={chat.uid} className="flex items-center justify-between gap-2 py-1 border-t border-red-900/50">
-                    <div className="min-w-0">
-                      <span className="text-sm">{chat.nombre}</span>
-                      <span className="text-[10px] text-[var(--muted)] ml-2">{chat.pipelineName ?? chat.origen}</span>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className={`text-xs font-bold ${chat.minutosEsperando >= 15 ? "text-red-400" : "text-yellow-400"}`}>
-                        {formatearEspera(chat.minutosEsperando)}
-                      </span>
-                      <a
-                        href={chat.leadId
-                          ? `https://${KOMMO_SUBDOMAIN}.kommo.com/leads/detail/${chat.leadId}`
-                          : `https://${KOMMO_SUBDOMAIN}.kommo.com/leads/pipeline/`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-2 py-1 rounded text-[10px] font-medium bg-red-600 hover:bg-red-700 text-white transition-colors"
-                      >
-                        Abrir
-                      </a>
-                    </div>
-                  </div>
+                  <FilaSinAceptar
+                    key={chat.uid}
+                    slug={slug}
+                    nombre={chat.nombre}
+                    mensaje={chat.mensaje}
+                    canal={chat.pipelineName ?? chat.origen}
+                    espera={formatearEspera(chat.minutosEsperando)}
+                    urgente={chat.minutosEsperando >= 15}
+                    url={chat.leadId
+                      ? `https://${KOMMO_SUBDOMAIN}.kommo.com/leads/detail/${chat.leadId}`
+                      : `https://${KOMMO_SUBDOMAIN}.kommo.com/leads/pipeline/`}
+                  />
                 ))}
               </div>
               {sinClasificar.length > 8 && (
