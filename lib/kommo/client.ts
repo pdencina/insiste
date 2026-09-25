@@ -190,7 +190,13 @@ export async function getConversacionesAbiertas(): Promise<KommoConversation[]> 
 
     const data = await response.json();
     const pagina = data?._embedded?.talks ?? [];
-    talks.push(...pagina.filter((t: { updated_at?: number; created_at: number }) => (t.updated_at ?? t.created_at) >= limite));
+    // Kommo ignora filter[is_in_work] y devuelve también las cerradas: filtrar acá
+    talks.push(
+      ...pagina.filter(
+        (t: { updated_at?: number; created_at: number; is_in_work?: boolean; status?: string }) =>
+          t.is_in_work !== false && t.status !== "closed" && (t.updated_at ?? t.created_at) >= limite
+      )
+    );
     if (pagina.length < 250) break;
   }
 
