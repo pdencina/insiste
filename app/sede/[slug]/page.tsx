@@ -39,6 +39,15 @@ interface ChatSinClasificar {
 
 const KOMMO_SUBDOMAIN = "contactoarschoolglobalcom";
 
+// Nombre visible de cada estado (el interno "atendido" = ya respondimos, esperando a la familia)
+const ETIQUETAS_ESTADO: Record<string, string> = {
+  pendiente: "Pendiente",
+  demorado: "Demorado",
+  frio: "Frío",
+  expirado: "Expirado sin respuesta",
+  atendido: "Respondido",
+};
+
 function formatearEspera(minutos: number): string {
   if (minutos < 60) return `${minutos} min`;
   if (minutos < 1440) {
@@ -336,7 +345,7 @@ export default function SedePage() {
 
           {filtroEstado !== "todos" && (
             <p className="text-xs text-[var(--muted)] mb-3">
-              Filtrando: <span className="font-medium text-white">{filtroEstado}</span> — <button onClick={() => setFiltroEstado("todos")} className="text-[var(--accent)] hover:underline">ver todos</button>
+              Filtrando: <span className="font-medium text-white">{ETIQUETAS_ESTADO[filtroEstado] ?? filtroEstado}</span> — <button onClick={() => setFiltroEstado("todos")} className="text-[var(--accent)] hover:underline">ver todos</button>
             </p>
           )}
 
