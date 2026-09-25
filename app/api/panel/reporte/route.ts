@@ -12,6 +12,9 @@ import { calcularReporte, notasDeCalculo, semanaActual, textoReporte } from "@/l
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
+// Kommo pagina de a 250 y el reporte/panel hace varias lecturas: dar margen
+export const maxDuration = 60;
+
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   const sedeAuth = request.headers.get("x-sede-auth");

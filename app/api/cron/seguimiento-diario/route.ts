@@ -29,6 +29,9 @@ const MAX_LISTADOS = 25;
 // Para sumar otra sede, agregarla aquí.
 const SEDES_ACTIVAS = ["Puente Alto"];
 
+// Kommo pagina de a 250 y el reporte/panel hace varias lecturas: dar margen
+export const maxDuration = 60;
+
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {

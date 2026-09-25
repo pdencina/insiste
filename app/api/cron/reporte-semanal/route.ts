@@ -20,6 +20,9 @@ import { calcularReporte, notasDeCalculo, semanaActual, textoReporte, type Datos
 const DESTINATARIOS = ["paburgos@armglobal.org", "pburgos@armglobal.org", "cnavea@armglobal.org"];
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
+// Kommo pagina de a 250 y el reporte/panel hace varias lecturas: dar margen
+export const maxDuration = 60;
+
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   const params = request.nextUrl.searchParams;
