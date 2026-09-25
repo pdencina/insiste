@@ -2,8 +2,9 @@
  * Respuestas predefinidas de admisión — AR School Puente Alto.
  *
  * Fuente: AR_School_Respuestas_Kommo_v4.docx (versión 4). El texto se copió
- * tal cual; para cambiar una respuesta, edítala aquí o actualiza el documento
- * y vuelve a generar este archivo.
+ * tal cual, salvo ajustes de registro formal (2026-09-25: sin "al tiro", "súper",
+ * "peques", "feliz te ayudo"; somos un centro educacional). Para cambiar una
+ * respuesta, edítala aquí y actualiza también la plantilla en Kommo.
  *
  * - tipo "mensaje": se envía a la familia (los [CORCHETES] se completan a mano)
  * - tipo "nota": nota interna para el lead en Kommo, no se envía
@@ -28,7 +29,7 @@ export const PLANTILLAS: Plantilla[] = [
     tipo: "mensaje",
     nota: null,
     requiereAutorizacion: false,
-    texto: "Hola [NOMBRE] 😊 Soy Pablo Encina, coordinador de *AR School Global, sede Puente Alto*.\n\nTe escribo porque nos dejaste tus datos / nos hablaste a través de una de nuestras publicaciones solicitando información sobre nuestro *Play Group en Puente Alto*. 💙\n\nPara que puedas ubicarnos mejor:\n🌐 https://www.arschoolglobal.com/\n\nQuiero ayudarte personalmente con tu consulta. ¿Qué edad tiene tu pequeñito/a? Con eso te digo al tiro la alternativa que corresponde. 🦁",
+    texto: "Hola [NOMBRE] 😊 Soy Pablo Encina, coordinador de *AR School Global, sede Puente Alto*.\n\nTe escribo porque nos dejaste tus datos / nos hablaste a través de una de nuestras publicaciones solicitando información sobre nuestro *Play Group en Puente Alto*. 💙\n\nPara que puedas ubicarnos mejor:\n🌐 https://www.arschoolglobal.com/\n\nQuiero ayudarte personalmente con tu consulta. ¿Qué edad tiene tu hijo/a? Con eso te indico la alternativa que corresponde. 🦁",
   },
   {
     id: "1.2",
@@ -55,7 +56,7 @@ export const PLANTILLAS: Plantilla[] = [
     tipo: "mensaje",
     nota: null,
     requiereAutorizacion: false,
-    texto: "Claro 😊 Te escribo desde *AR School Global, sede Puente Alto*.\n\nHace un tiempo nos dejaste tus datos / solicitaste información sobre admisión para tu hijo/a y por eso estamos retomando tu consulta.\n\nSomos un *Centro Educacional Alternativo* de Fundación Educacional ARM Global.\n\n🌐 https://www.arschoolglobal.com/\n📍 Av. José Manuel Irarrázaval 0565, Puente Alto.\n\nSoy Pablo Encina, coordinador de la sede, y feliz te ayudo personalmente desde acá 💙",
+    texto: "Claro 😊 Te escribo desde *AR School Global, sede Puente Alto*.\n\nHace un tiempo nos dejaste tus datos / solicitaste información sobre admisión para tu hijo/a y por eso estamos retomando tu consulta.\n\nSomos un *Centro Educacional Alternativo* de Fundación Educacional ARM Global.\n\n🌐 https://www.arschoolglobal.com/\n📍 Av. José Manuel Irarrázaval 0565, Puente Alto.\n\nSoy Pablo Encina, coordinador de la sede, y con gusto te ayudo personalmente desde acá 💙",
   },
   {
     id: "2.1",
@@ -100,7 +101,7 @@ export const PLANTILLAS: Plantilla[] = [
     tipo: "mensaje",
     nota: null,
     requiereAutorizacion: false,
-    texto: "Hola [NOMBRE] 😊 Soy Pablo Encina, coordinador de *AR School Global, sede Puente Alto*.\n\nHace un tiempo nos habías solicitado información para tu hijo/a y quería saber cómo les fue finalmente.\n\n¿Ya encontraron una alternativa educativa o todavía están evaluando opciones?\n\nSi aún estás buscando, feliz revisamos nuevamente tu caso 💙",
+    texto: "Hola [NOMBRE] 😊 Soy Pablo Encina, coordinador de *AR School Global, sede Puente Alto*.\n\nHace un tiempo nos habías solicitado información para tu hijo/a y quería saber cómo les fue finalmente.\n\n¿Ya encontraron una alternativa educativa o todavía están evaluando opciones?\n\nSi aún estás buscando, con gusto revisamos nuevamente tu caso 💙",
   },
   {
     id: "3.1",
@@ -118,7 +119,7 @@ export const PLANTILLAS: Plantilla[] = [
     tipo: "mensaje",
     nota: null,
     requiereAutorizacion: false,
-    texto: "Súper 😊 Con *5 años*, [NOMBRE NIÑO/A] corresponde a nuestro nivel *Pre-School*. 💙\n\nEn esta etapa acompañamos el aprendizaje de manera cercana, fortaleciendo autonomía, lenguaje, pensamiento, habilidades y seguridad personal.\n\n¿Estás buscando cambiarlo/a ahora o estás evaluando una alternativa para el próximo año?",
+    texto: "Muy bien 😊 Con *5 años*, [NOMBRE NIÑO/A] corresponde a nuestro nivel *Pre-School*. 💙\n\nEn esta etapa acompañamos el aprendizaje de manera cercana, fortaleciendo autonomía, lenguaje, pensamiento, habilidades y seguridad personal.\n\n¿Estás buscando cambiarlo/a ahora o estás evaluando una alternativa para el próximo año?",
   },
   {
     id: "3.3",
@@ -199,7 +200,7 @@ export const PLANTILLAS: Plantilla[] = [
     tipo: "mensaje",
     nota: null,
     requiereAutorizacion: false,
-    texto: "¡Qué linda etapa! 😊 Entonces tienes dos peques de *5 y 8 años*.\n\nEn nuestro caso podrían incorporarse a *Pre-School y Elementary* en AR School Puente Alto. 💙\n\nAlgo bonito de nuestro proyecto es que *ambos pueden crecer dentro de la misma comunidad educativa*, pero con un acompañamiento pensado para la etapa y ritmo de cada uno.\n\nNo buscamos que todos aprendan igual, sino conocer a cada estudiante y desarrollar sus habilidades, autonomía, valores y aprendizaje de manera cercana. 🦁\n\nComo son dos niños en etapas distintas, creo que vale mucho más la pena venir a conocerlo que explicarte todo solamente por WhatsApp.\n\nLa próxima semana estaré recibiendo familias en la sede. *¿Te acomoda más venir el lunes o el martes en la mañana?* 😊",
+    texto: "Gracias por contarme 😊 Entonces tienes dos hijos/as de *5 y 8 años*.\n\nEn nuestro caso podrían incorporarse a *Pre-School y Elementary* en AR School Puente Alto. 💙\n\nAlgo bonito de nuestro proyecto es que *ambos pueden crecer dentro de la misma comunidad educativa*, pero con un acompañamiento pensado para la etapa y ritmo de cada uno.\n\nNo buscamos que todos aprendan igual, sino conocer a cada estudiante y desarrollar sus habilidades, autonomía, valores y aprendizaje de manera cercana. 🦁\n\nComo son dos niños en etapas distintas, creo que vale mucho más la pena venir a conocerlo que explicarte todo solamente por WhatsApp.\n\nLa próxima semana estaré recibiendo familias en la sede. *¿Te acomoda más venir el lunes o el martes en la mañana?* 😊",
   },
   {
     id: "5.2",
@@ -208,7 +209,7 @@ export const PLANTILLAS: Plantilla[] = [
     tipo: "mensaje",
     nota: null,
     requiereAutorizacion: false,
-    texto: "Claro 😊 y me parece súper importante que quieras conocer bien *cómo trabajamos antes de tomar una decisión para tus hijos/as*.\n\nPara quien irá a *Kinder*, buscamos que aprenda a través de experiencias, participación y acompañamiento cercano, fortaleciendo autonomía, lenguaje, pensamiento y seguridad en esta etapa.\n\nY para quien irá a *4° básico*, el aprendizaje académico sigue siendo importante, pero buscamos que no sea solamente memorizar contenidos. Queremos que pueda comprender, participar, desarrollar autonomía, pensamiento crítico y descubrir sus propias habilidades, respetando también su ritmo de aprendizaje. 🦁\n\nNuestro modelo es más cercano y personalizado que el de un colegio tradicional.\n\nEn la visita podremos mostrarte los espacios, explicarte cómo sería la jornada de cada uno/a y responder todas las preguntas que necesites para que después puedan conversarlo tranquilos en familia. 💙",
+    texto: "Claro 😊 y me parece muy importante que quieras conocer bien *cómo trabajamos antes de tomar una decisión para tus hijos/as*.\n\nPara quien irá a *Kinder*, buscamos que aprenda a través de experiencias, participación y acompañamiento cercano, fortaleciendo autonomía, lenguaje, pensamiento y seguridad en esta etapa.\n\nY para quien irá a *4° básico*, el aprendizaje académico sigue siendo importante, pero buscamos que no sea solamente memorizar contenidos. Queremos que pueda comprender, participar, desarrollar autonomía, pensamiento crítico y descubrir sus propias habilidades, respetando también su ritmo de aprendizaje. 🦁\n\nNuestro modelo es más cercano y personalizado que el de un colegio tradicional.\n\nEn la visita podremos mostrarte los espacios, explicarte cómo sería la jornada de cada uno/a y responder todas las preguntas que necesites para que después puedan conversarlo tranquilos en familia. 💙",
   },
   {
     id: "6.1",
@@ -298,7 +299,7 @@ export const PLANTILLAS: Plantilla[] = [
     tipo: "mensaje",
     nota: null,
     requiereAutorizacion: false,
-    texto: "Súper 😊 Ese día tengo disponibilidad en dos horarios:\n\n🕐 *[HORA 1]*\n🕐 *[HORA 2]*\n\n¿Cuál te acomoda más para dejarte agendado/a?",
+    texto: "Perfecto 😊 Ese día tengo disponibilidad en dos horarios:\n\n🕐 *[HORA 1]*\n🕐 *[HORA 2]*\n\n¿Cuál te acomoda más para dejarte agendado/a?",
   },
   {
     id: "8.4",
@@ -442,7 +443,7 @@ export const PLANTILLAS: Plantilla[] = [
     tipo: "mensaje",
     nota: null,
     requiereAutorizacion: false,
-    texto: "¿Qué edad tiene tu hijo/a? Con eso te oriento al tiro 💙",
+    texto: "¿Qué edad tiene tu hijo/a? Con eso puedo orientarte mejor 💙",
   },
   {
     id: "12.2",

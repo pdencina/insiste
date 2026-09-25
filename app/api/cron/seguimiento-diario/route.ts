@@ -1,7 +1,7 @@
 /**
  * Cron: Seguimiento diario por sede (lunes a viernes, 8:30 hora Chile)
  *
- * Envía a cada responsable de sede un email con:
+ * Envía al responsable de cada sede activa (hoy solo Puente Alto) un email con:
  * - Chats en "Incoming leads" que nadie del equipo respondió
  * - Leads recién vencidos (pasaron el límite de días de su etapa, hasta 14 días
  *   sin movimiento): nombre + enlace, para recuperarlos hoy
@@ -25,6 +25,9 @@ import {
 
 const DIAS_RECUPERABLE = 14;
 const MAX_LISTADOS = 25;
+// Por ahora solo Puente Alto (Playgroup + AR School Puente Alto), que responde Pablo Encina.
+// Para sumar otra sede, agregarla aquí.
+const SEDES_ACTIVAS = ["Puente Alto"];
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -42,9 +45,10 @@ export async function GET(request: NextRequest) {
 
     for (const { sede, leads } of estancados) {
       const responsable = RESPONSABLES_SEDE[sede.toLowerCase()];
-      if (!responsable) continue;
+      if (!responsable || !SEDES_ACTIVAS.includes(sede)) continue;
 
-      const deLaSede = sinClasificar.recientes.filter((c) => !c.sede || c.sede === sede);
+      // Solo chats de los embudos de la sede (no las entradas generales)
+      const deLaSede = sinClasificar.recientes.filter((c) => c.sede === sede);
       const sinAceptar = deLaSede.filter((c) => !c.respondido);
       const respondidosSinAceptar = deLaSede.length - sinAceptar.length;
       const recientes = leads.filter((l) => l.diasSinMovimiento <= DIAS_RECUPERABLE);
@@ -55,7 +59,7 @@ export async function GET(request: NextRequest) {
         sede,
         email: responsable.email,
         asunto: `Seguimiento ${sede} (${hoy}): ${sinAceptar.length} sin responder, ${recientes.length} por recuperar`,
-        cuerpo: armarCuerpo(responsable.nombre, sede, sinAceptar, respondidosSinAceptar, sinClasificar, recientes, acumulados),
+        cuerpo: armarCuerpo(responsable.nombre, sede, sinAceptar, respondidosSinAceptar, recientes, acumulados),
       });
     }
 
@@ -117,7 +121,6 @@ function armarCuerpo(
   sede: string,
   sinAceptar: SinClasificarResultado["recientes"],
   respondidosSinAceptar: number,
-  sinClasificar: SinClasificarResultado,
   recientes: LeadEstancado[],
   acumulados: LeadEstancado[]
 ): string {
@@ -126,7 +129,7 @@ function armarCuerpo(
   cuerpo += `Este es el seguimiento de hoy para ${sede}.\n\n`;
 
   if (sinAceptar.length > 0) {
-    cuerpo += `1) CHATS SIN RESPONDER (${sinAceptar.length})\n`;
+    cuerpo += `CHATS SIN RESPONDER (${sinAceptar.length})\n`;
     cuerpo += `Están en "Incoming leads" (últimos 7 días) y nadie del equipo respondió su último mensaje:\n`;
     for (const c of sinAceptar.slice(0, MAX_LISTADOS)) {
       const url = c.leadId ? `https://${subdomain}.kommo.com/leads/detail/${c.leadId}` : "";
@@ -134,12 +137,11 @@ function armarCuerpo(
     }
     if (sinAceptar.length > MAX_LISTADOS) cuerpo += `  ... y ${sinAceptar.length - MAX_LISTADOS} más (ver panel)\n`;
     if (respondidosSinAceptar > 0) cuerpo += `  (+ ${respondidosSinAceptar} ya respondidos pero sin aceptar: acéptalos y muévelos a su etapa)\n`;
-    if (sinClasificar.antiguos > 0) cuerpo += `  (+ ${sinClasificar.antiguos} con más de 7 días, pendientes de limpieza)\n`;
     cuerpo += `\n`;
   }
 
   if (recientes.length > 0) {
-    cuerpo += `2) POR RECUPERAR HOY (${recientes.length})\n`;
+    cuerpo += `POR RECUPERAR HOY (${recientes.length})\n`;
     cuerpo += `Pasaron el plazo de su etapa pero llevan ${DIAS_RECUPERABLE} días o menos sin movimiento:\n`;
     for (const l of recientes.slice(0, MAX_LISTADOS)) {
       cuerpo += `  - ${l.nombre} — ${l.pipelineName} / ${l.etapa} — ${l.diasSinMovimiento} días (plazo ${l.limiteDias}) ${l.url}\n`;
@@ -149,7 +151,7 @@ function armarCuerpo(
   }
 
   if (acumulados.length > 0) {
-    cuerpo += `3) ACUMULADOS (${acumulados.length} con más de ${DIAS_RECUPERABLE} días sin movimiento)\n`;
+    cuerpo += `ACUMULADOS (${acumulados.length} con más de ${DIAS_RECUPERABLE} días sin movimiento)\n`;
     const porEtapa = new Map<string, number>();
     for (const l of acumulados) {
       const key = `${l.pipelineName} / ${l.etapa}`;

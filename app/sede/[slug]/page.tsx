@@ -102,9 +102,10 @@ export default function SedePage() {
           (c: Conversacion) => c.sede?.toLowerCase() === sedeInfo?.sedeNombre.toLowerCase()
         );
         setConversaciones(filtradas);
-        // Chats sin aceptar: los de esta sede + los de entradas generales (sin sede)
+        // Chats sin aceptar: solo los de los embudos de esta sede. Las entradas generales
+        // (ARS_WHATSAPP, Instagram, Embudo de ventas) las atiende otro equipo.
         const sinAceptar = (data.sinClasificar?.recientes ?? []).filter(
-          (c: ChatSinClasificar) => !c.sede || c.sede.toLowerCase() === sedeInfo?.sedeNombre.toLowerCase()
+          (c: ChatSinClasificar) => c.sede?.toLowerCase() === sedeInfo?.sedeNombre.toLowerCase()
         );
         setSinClasificar(sinAceptar);
         setSinClasificarAntiguos(data.sinClasificar?.antiguos ?? 0);

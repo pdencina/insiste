@@ -80,6 +80,7 @@ export function PanelRespuestas({ slug }: { slug: string }) {
   const [abierto, setAbierto] = useState(false);
   const [mensaje, setMensaje] = useState("");
   const [nombre, setNombre] = useState("");
+  const [programa, setPrograma] = useState<"" | "PLAYGROUP PUENTE ALTO" | "AR SCHOOL PUENTE ALTO">("");
   const [sugiriendo, setSugiriendo] = useState(false);
   const [sugerencias, setSugerencias] = useState<Sugerencia[]>([]);
   const [motivo, setMotivo] = useState("");
@@ -91,7 +92,10 @@ export function PanelRespuestas({ slug }: { slug: string }) {
     setSugiriendo(true);
     setError("");
     try {
-      const r = await pedirSugerencias(slug, mensaje, nombre || undefined);
+      const contexto = programa
+        ? `Conversación del embudo ${programa}${programa.startsWith("PLAYGROUP") ? " (Play Group, 2 a 5 años)" : " (AR School: Pre-School a High School)"}`
+        : undefined;
+      const r = await pedirSugerencias(slug, mensaje, nombre || undefined, contexto);
       setSugerencias(r.sugerencias);
       setMotivo(r.motivo);
     } catch (err) {
@@ -125,6 +129,15 @@ export function PanelRespuestas({ slug }: { slug: string }) {
             className="w-full p-2 rounded bg-[var(--background)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--accent)]"
           />
           <div className="flex gap-2 mt-2">
+            <select
+              value={programa}
+              onChange={(e) => setPrograma(e.target.value as typeof programa)}
+              className="p-2 rounded bg-[var(--background)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--accent)]"
+            >
+              <option value="">Programa…</option>
+              <option value="PLAYGROUP PUENTE ALTO">Playgroup</option>
+              <option value="AR SCHOOL PUENTE ALTO">AR School</option>
+            </select>
             <input
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
