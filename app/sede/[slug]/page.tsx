@@ -7,6 +7,7 @@ import { PanelReporte } from "./reporte";
 import { PanelAgenda } from "./agenda";
 import { fetchSede, guardarToken, tokenSede } from "./sesion";
 import { RespuestaChat, type MensajeChat } from "./respuesta-chat";
+import { useAlertas, BotonAlertas } from "./alertas";
 
 interface Conversacion {
   id: number;
@@ -19,6 +20,7 @@ interface Conversacion {
   horasRestantes: number;
   minutosRestantes: number;
   minutosSinResponder: number;
+  lastMessageAt: number;
   estado: string;
   estadoLabel: string;
   isRead: boolean;
@@ -85,6 +87,7 @@ export default function SedePage() {
   // Textos de los chats (webhook de Kommo) y si el envío desde Insiste está configurado
   const [mensajes, setMensajes] = useState<Record<number, MensajeChat[]>>({});
   const [envioListo, setEnvioListo] = useState<boolean | null>(null);
+  const alertas = useAlertas(conversaciones, mensajes, `WhatsApp 24h — ${sedeInfo?.nombre ?? ""}`);
 
   // Sesión guardada (token firmado por el servidor)
   useEffect(() => {
@@ -218,7 +221,10 @@ export default function SedePage() {
           <h1 className="text-xl font-bold">WhatsApp 24h — {sedeInfo.nombre}</h1>
           <p className="text-sm text-[var(--muted)]">{sedeInfo.responsable} — Se actualiza cada 60s</p>
         </div>
-        <button onClick={fetchData} className="text-sm text-[var(--accent)] hover:underline">Actualizar</button>
+        <div className="flex items-center gap-3">
+          <BotonAlertas permiso={alertas.permiso} activar={alertas.activar} />
+          <button onClick={fetchData} className="text-sm text-[var(--accent)] hover:underline">Actualizar</button>
+        </div>
       </div>
 
       {/* Fuera del bloque que se recarga cada 60s, para no perder lo escrito o generado */}
@@ -454,6 +460,7 @@ function ConversacionCard({
 
   return (
     <div
+      id={conv.leadId ? `conv-${conv.leadId}` : undefined}
       className={`p-4 rounded border bg-[var(--card)] ${
         conv.estado === "expirado" ? "border-red-600 bg-red-950/20" :
         conv.estado === "frio" ? "border-blue-600 bg-blue-950/20" :
