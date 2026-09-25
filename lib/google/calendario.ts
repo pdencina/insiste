@@ -1,12 +1,12 @@
 /**
  * Visitas de admisión desde Google Calendar (solo lectura).
  *
- * Las visitas están en el calendario personal de Pablo, compartido en modo
- * "ver todos los detalles" con la cuenta conectada a la app (pencina@armglobal.org).
- * - VISITAS_CALENDAR_ID: ID del calendario (el correo personal). Si falta, usa el
- *   calendario principal de la cuenta conectada.
- * - VISITAS_PALABRAS: palabras que identifican una visita en el título, separadas
- *   por coma (por defecto "visita").
+ * Las visitas están en el calendario principal de la cuenta conectada
+ * (pencina@armglobal.org). Se clasifican por título:
+ * - visita: dice "visita" y además Play / AR School / ARS / Admisión
+ *   (así no cuenta, por ejemplo, "Visita terreno CPA")
+ * - adaptación: dice "adaptación"
+ * VISITAS_CALENDAR_ID permite leer otro calendario (por defecto, "primary").
  */
 
 import { createServiceClient } from "@/lib/supabase/client";
@@ -14,6 +14,7 @@ import { getCalendarClient } from "@/lib/gmail/client";
 
 export interface VisitaCalendario {
   titulo: string;
+  tipo: "visita" | "adaptacion";
   inicio: number; // unix segundos
   cancelada: boolean;
 }
@@ -24,10 +25,6 @@ export type ResultadoVisitas =
 
 export async function getVisitasCalendario(desde: number, hasta: number): Promise<ResultadoVisitas> {
   const calendarId = process.env.VISITAS_CALENDAR_ID || "primary";
-  const palabras = (process.env.VISITAS_PALABRAS || "visita")
-    .split(",")
-    .map((p) => p.trim().toLowerCase())
-    .filter(Boolean);
 
   try {
     const { data: cuenta } = await createServiceClient()
@@ -54,11 +51,12 @@ export async function getVisitasCalendario(desde: number, hasta: number): Promis
         pageToken,
       });
       for (const ev of res.data.items ?? []) {
-        const titulo = ev.summary ?? "";
-        if (!palabras.some((p) => titulo.toLowerCase().includes(p))) continue;
+        const titulo = (ev.summary ?? "").trim();
+        const tipo = clasificar(titulo);
+        if (!tipo) continue;
         const inicio = ev.start?.dateTime ?? ev.start?.date;
         if (!inicio) continue;
-        visitas.push({ titulo, inicio: Math.floor(new Date(inicio).getTime() / 1000), cancelada: ev.status === "cancelled" });
+        visitas.push({ titulo, tipo, inicio: Math.floor(new Date(inicio).getTime() / 1000), cancelada: ev.status === "cancelled" });
       }
       pageToken = res.data.nextPageToken ?? undefined;
     } while (pageToken);
@@ -77,4 +75,13 @@ export async function getVisitasCalendario(desde: number, hasta: number): Promis
     }
     return { ok: false, error: msg.slice(0, 200) };
   }
+}
+
+/** Tipo de evento según el título, o null si no es de admisión. */
+export function clasificar(titulo: string): VisitaCalendario["tipo"] | null {
+  const t = titulo.toLowerCase();
+  if (/adaptaci[oó]n/.test(t)) return "adaptacion";
+  // "ars", "arschool", "arshool", "ar school", "play", "playgroup", "admisión"
+  if (/visita/.test(t) && /play|\bar\s?s|admisi/.test(t)) return "visita";
+  return null;
 }

@@ -4,7 +4,7 @@
  * Lo usan el cron del viernes (borrador en Gmail) y el botón "Reporte" del panel.
  * Todo se calcula desde Kommo para un rango de fechas (hora Chile):
  * - Visitas / matrículas: leads que ENTRARON a esas etapas en el rango
- * - Visitas: Google Calendar (eventos con "visita" en el título); si no está disponible,
+ * - Visitas: Google Calendar (visitas de admisión y adaptaciones, por título); si no está disponible,
  *   tareas tipo "Meeting" de Kommo o, en último caso, entradas a la etapa VISITA
  * - Gestión de conversaciones: mensajes de chat entrantes/salientes (persona vs bot)
  * - Contactos por interno: notas del lead que mencionan "interno" / "WhatsApp directo"
@@ -30,6 +30,9 @@ export interface DatosReporte {
   visitasFuente: "calendario" | "reuniones" | "etapa";
   /** null = no se puede calcular (completar a mano) */
   visitasProximaSemana: number | null;
+  /** Adaptaciones (solo desde el calendario; 0 si no hay calendario) */
+  adaptacionesAtendidas: number;
+  adaptacionesProximaSemana: number;
   /** Visitas contadas (fecha + título), para verificar en las notas internas */
   visitasDetalle: string[];
   /** Por qué no se usó el calendario, si falló */
@@ -181,17 +184,21 @@ export async function calcularReporte(desdeFecha: string, hastaFecha: string): P
   let visitasProximaSemana: number | null;
   let visitasFuente: DatosReporte["visitasFuente"];
   let visitasDetalle: string[] = [];
+  let adaptacionesAtendidas = 0;
+  let adaptacionesProximaSemana = 0;
   const reunionesPA = tareas.filter((t) => leadsPA.has(t.entity_id));
   if (cal.ok) {
     // Atendidas = visitas del período que ya ocurrieron; próxima semana = lunes a domingo siguiente
     const atendidas = cal.visitas.filter((v) => v.inicio >= desde && v.inicio <= Math.min(hasta, ahora));
     const proximas = cal.visitas.filter((v) => v.inicio >= lunesSiguiente && v.inicio < finProxima);
-    visitasAtendidas = atendidas.length;
-    visitasProximaSemana = proximas.length;
+    visitasAtendidas = atendidas.filter((v) => v.tipo === "visita").length;
+    visitasProximaSemana = proximas.filter((v) => v.tipo === "visita").length;
+    adaptacionesAtendidas = atendidas.filter((v) => v.tipo === "adaptacion").length;
+    adaptacionesProximaSemana = proximas.filter((v) => v.tipo === "adaptacion").length;
     visitasFuente = "calendario";
     const fmt = (v: { titulo: string; inicio: number }) =>
       `${new Date(v.inicio * 1000).toLocaleString("es-CL", { timeZone: "America/Santiago", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · ${v.titulo}`;
-    visitasDetalle = [...atendidas.map((v) => `atendida: ${fmt(v)}`), ...proximas.map((v) => `próxima: ${fmt(v)}`)];
+    visitasDetalle = [...atendidas.map((v) => `atendida: ${fmt(v)}`), ...proximas.map((v) => `próxima semana: ${fmt(v)}`)];
   } else if (reunionesPA.length > 0) {
     visitasAtendidas = reunionesPA.filter((t) => t.is_completed && t.complete_till >= desde && t.complete_till <= hasta).length;
     visitasProximaSemana = reunionesPA.filter((t) => !t.is_completed && t.complete_till >= lunesSiguiente && t.complete_till < finProxima).length;
@@ -209,6 +216,8 @@ export async function calcularReporte(desdeFecha: string, hastaFecha: string): P
     visitasAtendidas,
     visitasFuente,
     visitasProximaSemana,
+    adaptacionesAtendidas,
+    adaptacionesProximaSemana,
     visitasDetalle,
     calendarioError: cal.ok ? null : cal.error,
     matriculasPlaygroup: playgroup?.matriculas ?? 0,
@@ -243,8 +252,9 @@ function fechaDesde(fecha: string, dias: number): string {
 export function textoReporte(r: DatosReporte): string {
   let t = `REPORTE GESTIÓN ADMISIÓN\n\n`;
   t += `Fecha informada: ${r.rango}\n`;
-  t += `Visitas atendidas: ${r.visitasAtendidas}\n`;
-  t += `Visitas agendadas próxima semana: ${r.visitasProximaSemana ?? "___ (completar)"}\n`;
+  const adapt = (n: number) => (n > 0 ? ` (+${n} adaptación)` : "");
+  t += `Visitas atendidas: ${r.visitasAtendidas}${adapt(r.adaptacionesAtendidas)}\n`;
+  t += `Visitas agendadas próxima semana: ${r.visitasProximaSemana ?? "___ (completar)"}${adapt(r.adaptacionesProximaSemana)}\n`;
   t += `Cierre de matrículas Playgroup: ${r.matriculasPlaygroup}\n`;
   t += `Cierre de matrículas AR school: ${r.matriculasArSchool}\n\n`;
 
@@ -262,7 +272,7 @@ export function textoReporte(r: DatosReporte): string {
 /** Notas internas sobre cómo se calculó (para revisar antes de enviar; no van al equipo). */
 export function notasDeCalculo(r: DatosReporte): string {
   const fuente = {
-    calendario: "Visitas: eventos de Google Calendar con \"visita\" en el título (atendidas = ya ocurrieron en el período; próximas = lunes a domingo siguiente).",
+    calendario: "Visitas: Google Calendar de pencina@armglobal.org. Visita = título con \"visita\" + Play/AR School/ARS/Admisión; adaptación = título con \"adaptación\". Atendidas = ya ocurrieron en el período; próximas = lunes a domingo siguiente.",
     reuniones: "Visitas: tareas tipo Reunión de Kommo (atendidas = completadas en el período).",
     etapa: "Visitas atendidas: leads que entraron a la etapa VISITA (aprox.: no distingue agendada de realizada). Próxima semana: completar a mano.",
   }[r.visitasFuente];
