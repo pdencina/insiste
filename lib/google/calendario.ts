@@ -102,7 +102,13 @@ export const HORARIO_VISITAS = {
 export const DIRECCION_SEDE = "Av. José Manuel Irarrázaval 0565, Puente Alto";
 
 export interface Ocupado { inicio: number; fin: number; titulo: string }
-export interface DiaDisponible { fecha: string; horarios: number[] } // horarios = inicio unix
+export interface Slot { inicio: number; libre: boolean; choque?: string } // choque = título del evento que lo bloquea
+export interface DiaDisponible {
+  fecha: string;
+  horarios: number[]; // solo los libres (inicio unix)
+  slots: Slot[]; // todos los del horario de atención, libres y ocupados
+  eventos: Ocupado[]; // lo que ya está agendado ese día
+}
 
 async function calendarioActivo() {
   const { data: cuenta } = await createServiceClient()
@@ -196,15 +202,20 @@ export async function getDisponibilidad(diasHabiles = 10, duracionMin = 60) {
   const ocupados = await getOcupados(desde, hasta);
 
   const dias: DiaDisponible[] = fechas.map((fecha) => {
-    const horarios: number[] = [];
+    const slots: Slot[] = [];
     const fin = horaChile(fecha, HORARIO_VISITAS.fin);
     for (let t = horaChile(fecha, HORARIO_VISITAS.inicio); t + duracionMin * 60 <= fin; t += HORARIO_VISITAS.pasoMin * 60) {
       if (t < ahora + HORARIO_VISITAS.anticipacionMin * 60) continue;
       const tFin = t + duracionMin * 60;
-      if (ocupados.some((o) => o.inicio < tFin && o.fin > t)) continue;
-      horarios.push(t);
+      const choque = ocupados.find((o) => o.inicio < tFin && o.fin > t);
+      slots.push(choque ? { inicio: t, libre: false, choque: choque.titulo } : { inicio: t, libre: true });
     }
-    return { fecha, horarios };
+    const iniDia = horaChile(fecha, "00:00");
+    const finDia = horaChile(fecha, "23:59");
+    const eventos = ocupados
+      .filter((o) => o.inicio < finDia && o.fin > iniDia)
+      .sort((a, b) => a.inicio - b.inicio);
+    return { fecha, horarios: slots.filter((x) => x.libre).map((x) => x.inicio), slots, eventos };
   });
 
   const visitas = (await getVisitasCalendario(ahora, hasta));
@@ -224,11 +235,20 @@ export interface NuevaVisita {
   leadUrl?: string;
 }
 
-/** Crea la visita en el calendario, verificando antes que el horario siga libre. */
-export async function crearVisita(v: NuevaVisita): Promise<{ id: string; link: string; titulo: string }> {
+/** Eventos del calendario que se cruzan con [inicio, inicio + duración). */
+export async function verificarHorario(inicio: number, duracionMin: number): Promise<Ocupado[]> {
+  const fin = inicio + duracionMin * 60;
+  return (await getOcupados(inicio - 86400, fin + 86400)).filter((o) => o.inicio < fin && o.fin > inicio);
+}
+
+/**
+ * Crea la visita en el calendario. Verifica antes que el horario siga libre; con
+ * `forzar` se agenda igual (p. ej. dos visitas a la misma hora, a propósito).
+ */
+export async function crearVisita(v: NuevaVisita & { forzar?: boolean }): Promise<{ id: string; link: string; titulo: string }> {
   const fin = v.inicio + v.duracionMin * 60;
-  const choques = (await getOcupados(v.inicio, fin)).filter((o) => o.inicio < fin && o.fin > v.inicio);
-  if (choques.length > 0) throw new Error(`Ese horario ya no está libre (choca con: ${choques[0].titulo})`);
+  const choques = await verificarHorario(v.inicio, v.duracionMin);
+  if (choques.length > 0 && !v.forzar) throw new Error(`Ese horario ya no está libre (choca con: ${choques[0].titulo})`);
 
   const { calendar, calendarId } = await calendarioActivo();
   const titulo = `Visita Admisión | ${v.programa} | ${v.detalle.trim()}`;

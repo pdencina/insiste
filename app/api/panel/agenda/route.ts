@@ -1,16 +1,17 @@
 /**
  * API Panel: Agenda de visitas (Google Calendar de pencina@armglobal.org)
  *
- * GET  /api/panel/agenda?dias=10&duracion=60 → horarios libres + visitas ya agendadas
- * POST /api/panel/agenda  Body: { programa, detalle, inicio, duracionMin, emailFamilia?, leadUrl? }
- *      → crea la visita en el calendario (verifica antes que el horario siga libre)
+ * GET  /api/panel/agenda?dias=10&duracion=60 → horarios (libres y ocupados) + visitas agendadas
+ * GET  /api/panel/agenda?verificar=<unix>&duracion=60 → con qué se cruza ese horario puntual
+ * POST /api/panel/agenda  Body: { programa, detalle, inicio, duracionMin, emailFamilia?, leadUrl?, forzar? }
+ *      → crea la visita (verifica antes que siga libre; con forzar=true agenda igual)
  *
  * Solo la sede Puente Alto (el calendario es de Pablo Encina) o el admin.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { verificarPanel } from "@/lib/panel/sesion";
-import { crearVisita, getDisponibilidad } from "@/lib/google/calendario";
+import { crearVisita, getDisponibilidad, verificarHorario } from "@/lib/google/calendario";
 
 export const maxDuration = 60;
 
@@ -27,6 +28,11 @@ export async function GET(request: NextRequest) {
   const duracion = [30, 45, 60, 90].includes(Number(params.get("duracion"))) ? Number(params.get("duracion")) : 60;
 
   try {
+    const verificar = Number(params.get("verificar"));
+    if (verificar) {
+      const choques = await verificarHorario(verificar, duracion);
+      return NextResponse.json({ ok: true, inicio: verificar, duracion, choques });
+    }
     const d = await getDisponibilidad(dias, duracion);
     return NextResponse.json({ ok: true, duracion, ...d });
   } catch (err) {
@@ -56,7 +62,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Ese horario ya pasó" }, { status: 400 });
     }
 
-    const creada = await crearVisita({ programa, detalle, inicio, duracionMin, emailFamilia, leadUrl });
+    const creada = await crearVisita({ programa, detalle, inicio, duracionMin, emailFamilia, leadUrl, forzar: body.forzar === true });
     return NextResponse.json({ ok: true, ...creada, invitacionEnviada: Boolean(emailFamilia) });
   } catch (err) {
     const msg = String(err);

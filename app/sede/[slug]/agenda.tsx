@@ -4,7 +4,9 @@ import { useState } from "react";
 import { PLANTILLAS } from "@/lib/kommo/plantillas";
 import { fetchSede } from "./sesion";
 
-interface Dia { fecha: string; horarios: number[] }
+interface Slot { inicio: number; libre: boolean; choque?: string }
+interface Evento { inicio: number; fin: number; titulo: string }
+interface Dia { fecha: string; horarios: number[]; slots: Slot[]; eventos: Evento[] }
 interface Agendada { titulo: string; tipo: "visita" | "adaptacion"; inicio: number }
 
 const TZ = "America/Santiago";
@@ -13,6 +15,16 @@ const diaCorto = (t: number) => new Date(t * 1000).toLocaleDateString("es-CL", {
 const diaLargo = (t: number) => new Date(t * 1000).toLocaleDateString("es-CL", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" });
 const tituloDia = (fecha: string) =>
   new Date(`${fecha}T12:00:00Z`).toLocaleDateString("es-CL", { timeZone: "UTC", weekday: "long", day: "numeric", month: "short" });
+
+/** Unix de "YYYY-MM-DD" + "HH:MM" en hora Chile (3 h en verano, 4 en invierno). */
+function unixChile(fecha: string, hhmm: string): number {
+  const [y, m, d] = fecha.split("-").map(Number);
+  const [h, min] = hhmm.split(":").map(Number);
+  const horaEnChile = Number(
+    new Date(Date.UTC(y, m - 1, d, 12)).toLocaleString("en-US", { timeZone: TZ, hour: "numeric", hour12: false })
+  );
+  return Date.UTC(y, m - 1, d, h + (12 - horaEnChile), min) / 1000;
+}
 
 function textoPlantilla(id: string) {
   return PLANTILLAS.find((p) => p.id === id)?.texto ?? "";
@@ -48,6 +60,39 @@ export function PanelAgenda({ slug }: { slug: string }) {
   const [propuesta, setPropuesta] = useState("");
 
   const [seleccionado, setSeleccionado] = useState<number | null>(null);
+  // Eventos con los que choca el horario elegido (vacío = libre)
+  const [choques, setChoques] = useState<string[]>([]);
+  const [otraFecha, setOtraFecha] = useState("");
+  const [otraHora, setOtraHora] = useState("");
+  const [verificando, setVerificando] = useState(false);
+  const [verificado, setVerificado] = useState<{ inicio: number; choques: Evento[] } | null>(null);
+
+  const elegir = (inicio: number, conQue: string[] = []) => {
+    setSeleccionado(inicio);
+    setChoques(conQue);
+    setCreada(null);
+  };
+
+  /** Revisa en el calendario un horario que propone la familia (cualquier día y hora). */
+  const verificarOtro = async () => {
+    if (!otraFecha || !otraHora) return;
+    const inicio = unixChile(otraFecha, otraHora);
+    if (inicio < Date.now() / 1000) {
+      setError("Ese horario ya pasó");
+      return;
+    }
+    setVerificando(true);
+    setError("");
+    try {
+      const res = await fetchSede(slug, `/api/panel/agenda?verificar=${inicio}&duracion=${duracion}`);
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "No se pudo revisar el horario");
+      setVerificado({ inicio, choques: data.choques });
+    } catch (err) {
+      setError(String(err).replace(/^Error: /, ""));
+    }
+    setVerificando(false);
+  };
   const [programa, setPrograma] = useState<"Play Group" | "AR School">("Play Group");
   const [detalle, setDetalle] = useState("");
   const [nombre, setNombre] = useState("");
@@ -95,7 +140,7 @@ export function PanelAgenda({ slug }: { slug: string }) {
     if (seleccionado === null || !detalle.trim()) return;
     const resumen = `Crear en tu Google Calendar:\n\nVisita Admisión | ${programa} | ${detalle.trim()}\n${diaLargo(seleccionado)} a las ${hora(seleccionado)} (${duracion} min)${
       email.trim() ? `\n\nSe enviará una invitación a ${email.trim()}` : ""
-    }\n\n¿Confirmas?`;
+    }${choques.length ? `\n\n⚠ OJO: ese horario ya tiene:\n- ${choques.join("\n- ")}\nSe agendará igual, en paralelo.` : ""}\n\n¿Confirmas?`;
     if (!window.confirm(resumen)) return;
 
     setCreando(true);
@@ -104,7 +149,7 @@ export function PanelAgenda({ slug }: { slug: string }) {
       const res = await fetchSede(slug, "/api/panel/agenda", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ programa, detalle, inicio: seleccionado, duracionMin: duracion, emailFamilia: email.trim() || undefined }),
+        body: JSON.stringify({ programa, detalle, inicio: seleccionado, duracionMin: duracion, emailFamilia: email.trim() || undefined, forzar: choques.length > 0 }),
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "No se pudo crear la cita");
@@ -114,6 +159,8 @@ export function PanelAgenda({ slug }: { slug: string }) {
         .replaceAll("[NOMBRE]", nombre.trim().split(/\s+/)[0] || "[NOMBRE]");
       setCreada({ titulo: data.titulo, link: data.link, inicio: seleccionado, confirmacion, invitacion: data.invitacionEnviada });
       setSeleccionado(null);
+      setChoques([]);
+      setVerificado(null);
       setDetalle("");
       setEmail("");
       cargar();
@@ -189,27 +236,75 @@ export function PanelAgenda({ slug }: { slug: string }) {
 
           {!cargando && dias.length > 0 && (
             <>
-              <p className="text-xs font-bold text-[var(--muted)] mb-2">Horarios libres (elige uno para agendar)</p>
-              <div className="flex flex-col gap-2">
+              <p className="text-xs font-bold text-[var(--muted)] mb-1">Horarios (elige uno para agendar)</p>
+              <p className="text-[10px] text-[var(--muted)] mb-2">
+                Libre: <span className="px-1 border border-[var(--border)] rounded">09:00</span> · Ocupado:{" "}
+                <span className="px-1 border border-red-900 rounded line-through opacity-60">09:00</span> (pasa el mouse para ver con qué)
+              </p>
+              <div className="flex flex-col gap-3">
                 {dias.map((d) => (
-                  <div key={d.fecha} className="flex flex-wrap items-center gap-1">
-                    <span className="text-xs w-28 shrink-0 capitalize">{tituloDia(d.fecha)}</span>
-                    {d.horarios.length === 0 && <span className="text-[10px] text-[var(--muted)]">sin horarios libres</span>}
-                    {d.horarios.map((t) => (
-                      <button
-                        key={t}
-                        onClick={() => { setSeleccionado(t); setCreada(null); }}
-                        className={`px-2 py-1 rounded text-[11px] border transition-colors ${
-                          seleccionado === t ? "bg-[var(--accent)] border-[var(--accent)] text-white" : "border-[var(--border)] hover:border-[var(--accent)]"
-                        }`}
-                      >
-                        {hora(t)}
-                      </button>
-                    ))}
+                  <div key={d.fecha}>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className="text-xs w-28 shrink-0 capitalize">{tituloDia(d.fecha)}</span>
+                      {d.slots.length === 0 && <span className="text-[10px] text-[var(--muted)]">sin horarios disponibles</span>}
+                      {d.slots.map((sl) => (
+                        <button
+                          key={sl.inicio}
+                          onClick={() => elegir(sl.inicio, sl.choque ? [sl.choque] : [])}
+                          title={sl.libre ? "Libre" : `Ocupado: ${sl.choque}`}
+                          className={`px-2 py-1 rounded text-[11px] border transition-colors ${
+                            seleccionado === sl.inicio
+                              ? sl.libre ? "bg-[var(--accent)] border-[var(--accent)] text-white" : "bg-orange-700 border-orange-600 text-white"
+                              : sl.libre ? "border-[var(--border)] hover:border-[var(--accent)]" : "border-red-900 line-through opacity-50 hover:opacity-80"
+                          }`}
+                        >
+                          {hora(sl.inicio)}
+                        </button>
+                      ))}
+                    </div>
+                    {d.eventos.length > 0 && (
+                      <p className="text-[10px] text-[var(--muted)] mt-1 ml-28 pl-1">
+                        Ya agendado: {d.eventos.map((e) => `${hora(e.inicio)}–${hora(e.fin)} ${e.titulo}`).join(" · ")}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
             </>
+          )}
+
+          {/* Horario propuesto por la familia: cualquier día y hora, con aviso de choques */}
+          {!cargando && (
+            <div className="mt-4 p-3 rounded border border-[var(--border)] bg-[var(--background)]">
+              <p className="text-xs font-bold mb-2">¿La familia propone otro horario?</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <input type="date" value={otraFecha} onChange={(e) => { setOtraFecha(e.target.value); setVerificado(null); }} className={input} />
+                <input type="time" step={900} value={otraHora} onChange={(e) => { setOtraHora(e.target.value); setVerificado(null); }} className={input} />
+                <button onClick={verificarOtro} disabled={verificando || !otraFecha || !otraHora} className="px-3 py-2 rounded bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-xs font-medium disabled:opacity-50">
+                  {verificando ? "Revisando…" : "Revisar en mi calendario"}
+                </button>
+              </div>
+              {verificado && (
+                <div className="mt-2 text-xs">
+                  {verificado.choques.length === 0 ? (
+                    <p className="text-green-400">✅ Libre: <span className="capitalize">{diaLargo(verificado.inicio)}</span> a las {hora(verificado.inicio)} ({duracion} min)</p>
+                  ) : (
+                    <>
+                      <p className="text-orange-300">⚠ Ese horario choca con:</p>
+                      {verificado.choques.map((c, i) => (
+                        <p key={i} className="text-[11px] text-orange-200 ml-3">• {hora(c.inicio)}–{hora(c.fin)} {c.titulo}</p>
+                      ))}
+                    </>
+                  )}
+                  <button
+                    onClick={() => elegir(verificado.inicio, verificado.choques.map((c) => `${hora(c.inicio)}–${hora(c.fin)} ${c.titulo}`))}
+                    className={`mt-2 px-3 py-1 rounded text-[11px] font-medium text-white ${verificado.choques.length ? "bg-orange-700 hover:bg-orange-800" : "bg-green-600 hover:bg-green-700"}`}
+                  >
+                    {verificado.choques.length ? "Agendar igual en este horario" : "Usar este horario"}
+                  </button>
+                </div>
+              )}
+            </div>
           )}
 
           {seleccionado !== null && (
@@ -217,6 +312,9 @@ export function PanelAgenda({ slug }: { slug: string }) {
               <p className="text-xs mb-2">
                 Nueva visita: <span className="font-medium capitalize">{diaLargo(seleccionado)}</span> a las <span className="font-medium">{hora(seleccionado)}</span> ({duracion} min)
               </p>
+              {choques.length > 0 && (
+                <p className="text-[11px] text-orange-300 mb-2">⚠ Choca con: {choques.join(" · ")}. Si confirmas, quedan en paralelo.</p>
+              )}
               <div className="flex flex-wrap gap-2">
                 <select value={programa} onChange={(e) => setPrograma(e.target.value as typeof programa)} className={input}>
                   <option>Play Group</option>
@@ -229,7 +327,7 @@ export function PanelAgenda({ slug }: { slug: string }) {
                 <button onClick={crear} disabled={creando || !detalle.trim()} className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white text-sm font-medium disabled:opacity-50">
                   {creando ? "Creando…" : "Crear cita en mi Google Calendar"}
                 </button>
-                <button onClick={() => setSeleccionado(null)} className="text-xs text-[var(--muted)] hover:underline">Cancelar</button>
+                <button onClick={() => { setSeleccionado(null); setChoques([]); }} className="text-xs text-[var(--muted)] hover:underline">Cancelar</button>
               </div>
             </div>
           )}
