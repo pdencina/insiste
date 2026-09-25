@@ -339,3 +339,171 @@ export function agruparPorSede(conversaciones: KommoConversation[]): AlertaPorSe
   resultado.sort((a, b) => (b.demorados + b.pendientes) - (a.demorados + a.pendientes));
   return resultado;
 }
+
+// ============================================================
+// REPORTE SEMANAL DE ADMISIÓN
+// ============================================================
+
+// ID fijo de Kommo para la etapa "Logrado con éxito" (ganado) en todos los pipelines
+const STATUS_GANADO = 142;
+
+export interface EtapaConteo {
+  etapaId: number;
+  etapaName: string;
+  cantidad: number;
+}
+
+export interface ReporteSede {
+  pipelineName: string;
+  totalLeads: number;
+  etapas: EtapaConteo[];
+  visitas: number;
+  visitasEtapas: string[];
+  visitasAproximado: boolean;
+  matriculas: number;
+}
+
+export interface CambioEtapa {
+  leadId: number;
+  pipelineId: number;
+  statusId: number;
+}
+
+/**
+ * Obtiene el detalle de pipelines con sus etapas (status) para poder mapear.
+ */
+async function getPipelinesConEtapas(): Promise<Map<number, { name: string; statuses: Map<number, string> }>> {
+  const res = await kommoFetch("/leads/pipelines");
+  const map = new Map<number, { name: string; statuses: Map<number, string> }>();
+  if (!res.ok || res.status === 204) return map;
+
+  const data = await res.json();
+  const pipelines = data?._embedded?.pipelines ?? [];
+
+  for (const pipeline of pipelines) {
+    const statuses = new Map<number, string>();
+    const embeddedStatuses = pipeline._embedded?.statuses ?? [];
+    for (const status of embeddedStatuses) {
+      statuses.set(status.id, status.name);
+    }
+    map.set(pipeline.id, { name: pipeline.name ?? "", statuses });
+  }
+
+  return map;
+}
+
+/**
+ * Obtiene los cambios de etapa de leads ocurridos en un rango (unix, segundos).
+ * Kommo responde 204 cuando no hay resultados.
+ */
+export async function obtenerCambiosDeEtapa(desde: number, hasta: number): Promise<CambioEtapa[]> {
+  const cambios: CambioEtapa[] = [];
+  let page = 1;
+
+  while (page <= 50) {
+    const res = await kommoFetch(
+      `/events?filter[type]=lead_status_changed&filter[created_at][from]=${desde}&filter[created_at][to]=${hasta}&limit=100&page=${page}`
+    );
+    if (!res.ok || res.status === 204) break;
+
+    const data = await res.json();
+    const eventos = data?._embedded?.events ?? [];
+
+    for (const ev of eventos) {
+      const status = ev.value_after?.[0]?.lead_status;
+      if (!status) continue;
+      cambios.push({ leadId: ev.entity_id, pipelineId: status.pipeline_id, statusId: status.id });
+    }
+
+    if (eventos.length < 100) break;
+    page++;
+  }
+
+  return cambios;
+}
+
+/**
+ * Arma el reporte de un pipeline (buscado por nombre):
+ * - etapas: foto actual de leads por etapa (referencia)
+ * - visitas / matrículas: leads distintos que ENTRARON a esas etapas según `cambios`
+ */
+export async function contarLeadsPorPipeline(
+  pipelineNombre: string,
+  cambios: CambioEtapa[]
+): Promise<ReporteSede | null> {
+  const pipelines = await getPipelinesConEtapas();
+
+  // Buscar el pipeline por nombre (case insensitive, contains)
+  let pipelineId: number | null = null;
+  let pipelineInfo: { name: string; statuses: Map<number, string> } | null = null;
+
+  for (const [id, info] of pipelines) {
+    if (info.name.toLowerCase().includes(pipelineNombre.toLowerCase())) {
+      pipelineId = id;
+      pipelineInfo = info;
+      break;
+    }
+  }
+
+  if (!pipelineId || !pipelineInfo) return null;
+
+  // Foto actual: leads por etapa
+  const leadsPorEtapa = new Map<number, number>();
+  let totalLeads = 0;
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore && page <= 10) {
+    const res = await kommoFetch(`/leads?filter[pipeline_id]=${pipelineId}&limit=250&page=${page}`);
+    if (!res.ok || res.status === 204) break;
+
+    const data = await res.json();
+    const leads = data?._embedded?.leads ?? [];
+
+    for (const lead of leads) {
+      const statusId = lead.status_id;
+      leadsPorEtapa.set(statusId, (leadsPorEtapa.get(statusId) ?? 0) + 1);
+      totalLeads++;
+    }
+
+    hasMore = leads.length === 250;
+    page++;
+  }
+
+  const etapas: EtapaConteo[] = [];
+  for (const [statusId, cantidad] of leadsPorEtapa) {
+    const etapaName = pipelineInfo.statuses.get(statusId) ?? `Etapa ${statusId}`;
+    etapas.push({ etapaId: statusId, etapaName, cantidad });
+  }
+
+  // Etapas de visita: preferir las de visita realizada; si no hay, cualquier etapa con "visita"
+  const todas = [...pipelineInfo.statuses.entries()];
+  const deVisita = todas.filter(([, n]) => n.toLowerCase().includes("visita"));
+  const realizadas = deVisita.filter(([, n]) => /realiz|atend|asisti|hecha/.test(n.toLowerCase()));
+  const etapasVisita = realizadas.length > 0 ? realizadas : deVisita;
+  const idsVisita = new Set(etapasVisita.map(([id]) => id));
+
+  // Matrícula: etapa ganada de Kommo + cualquier etapa con "matr"
+  const idsMatricula = new Set<number>([STATUS_GANADO]);
+  for (const [id, n] of todas) {
+    if (n.toLowerCase().includes("matr")) idsMatricula.add(id);
+  }
+
+  const leadsVisita = new Set<number>();
+  const leadsMatricula = new Set<number>();
+  for (const c of cambios) {
+    if (c.pipelineId !== pipelineId) continue;
+    if (idsVisita.has(c.statusId)) leadsVisita.add(c.leadId);
+    if (idsMatricula.has(c.statusId)) leadsMatricula.add(c.leadId);
+  }
+
+  return {
+    pipelineName: pipelineInfo.name,
+    totalLeads,
+    etapas,
+    visitas: leadsVisita.size,
+    visitasEtapas: etapasVisita.map(([, n]) => n),
+    visitasAproximado: realizadas.length === 0,
+    matriculas: leadsMatricula.size,
+  };
+}

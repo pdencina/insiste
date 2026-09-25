@@ -23,6 +23,10 @@
     {
       "path": "/api/cron/alertas-whatsapp",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/reporte-semanal",
+      "schedule": "0 20 * * 5"
     }
   ]
 }
