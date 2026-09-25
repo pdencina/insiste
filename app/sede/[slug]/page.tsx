@@ -6,6 +6,7 @@ import { PanelRespuestas, FilaSinAceptar } from "./respuestas";
 import { PanelReporte } from "./reporte";
 import { PanelAgenda } from "./agenda";
 import { fetchSede, guardarToken, tokenSede } from "./sesion";
+import { RespuestaChat, type MensajeChat } from "./respuesta-chat";
 
 interface Conversacion {
   id: number;
@@ -72,6 +73,9 @@ export default function SedePage() {
   const [sinClasificarAntiguos, setSinClasificarAntiguos] = useState(0);
   const [verTodosSinClasificar, setVerTodosSinClasificar] = useState(false);
   const [verRespondidos, setVerRespondidos] = useState(false);
+  // Textos de los chats (webhook de Kommo) y si el envío desde Insiste está configurado
+  const [mensajes, setMensajes] = useState<Record<number, MensajeChat[]>>({});
+  const [envioListo, setEnvioListo] = useState<boolean | null>(null);
 
   // Sesión guardada (token firmado por el servidor)
   useEffect(() => {
@@ -114,6 +118,13 @@ export default function SedePage() {
           (c: Conversacion) => c.sede?.toLowerCase() === sedeInfo?.sedeNombre.toLowerCase()
         );
         setConversaciones(filtradas);
+        setMensajes(data.mensajes ?? {});
+        if (slug === "puente-alto" && envioListo === null) {
+          fetchSede(slug, "/api/panel/responder")
+            .then((r) => r.json())
+            .then((d) => setEnvioListo(Boolean(d.listo)))
+            .catch(() => setEnvioListo(false));
+        }
         // Chats sin aceptar: solo los de los embudos de esta sede. Las entradas generales
         // (ARS_WHATSAPP, Instagram, Embudo de ventas) las atiende otro equipo.
         const sinAceptar = (data.sinClasificar?.recientes ?? []).filter(
@@ -363,7 +374,14 @@ export default function SedePage() {
           {convsFiltradas.length === 0 && <p className="text-[var(--muted)] text-sm">No hay conversaciones con ese filtro</p>}
           <div className="flex flex-col gap-2">
             {convsFiltradas.map((conv) => (
-              <ConversacionCard key={conv.id} conv={conv} slug={slug} sedeNombre={sedeInfo.sedeNombre} />
+              <ConversacionCard
+                key={conv.id}
+                conv={conv}
+                slug={slug}
+                sedeNombre={sedeInfo.sedeNombre}
+                mensajes={conv.leadId ? mensajes[conv.leadId] ?? [] : []}
+                envioListo={envioListo}
+              />
             ))}
           </div>
         </>
@@ -372,7 +390,19 @@ export default function SedePage() {
   );
 }
 
-function ConversacionCard({ conv, slug, sedeNombre }: { conv: Conversacion; slug: string; sedeNombre: string }) {
+function ConversacionCard({
+  conv,
+  slug,
+  sedeNombre,
+  mensajes,
+  envioListo,
+}: {
+  conv: Conversacion;
+  slug: string;
+  sedeNombre: string;
+  mensajes: MensajeChat[];
+  envioListo: boolean | null;
+}) {
   const [mensajeIA, setMensajeIA] = useState("");
   const [generando, setGenerando] = useState(false);
   const [copiado, setCopiado] = useState(false);
@@ -484,6 +514,19 @@ function ConversacionCard({ conv, slug, sedeNombre }: { conv: Conversacion; slug
           </div>
         </div>
       </div>
+
+      {/* Conversación y respuesta desde el panel (solo Puente Alto: responde Pablo Encina) */}
+      {slug === "puente-alto" && conv.leadId && (
+        <RespuestaChat
+          slug={slug}
+          leadId={conv.leadId}
+          nombre={conv.contactName}
+          programa={conv.pipelineName}
+          mensajes={mensajes}
+          ventanaAbierta={conv.minutosRestantes > 0}
+          configListo={envioListo}
+        />
+      )}
 
       {/* Mensaje de reactivación generado */}
       {mensajeIA && (
