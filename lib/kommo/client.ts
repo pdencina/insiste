@@ -55,15 +55,57 @@ function getKommoOptions(): KommoApiOptions {
   return { token, subdomain };
 }
 
+// ------------------------------------------------------------
+// Límite de velocidad de Kommo (~7 solicitudes/segundo por cuenta).
+// Si se supera, Kommo responde 429 y antes esas respuestas se ignoraban en
+// silencio: faltaban leads/mensajes y el panel mostraba números distintos en
+// cada carga. Ahora todas las llamadas pasan por una fila con ritmo máximo y
+// se reintentan ante 429, 5xx o cortes de red.
+// ------------------------------------------------------------
+const MAX_EN_VUELO = 3;
+const ESPACIO_MIN_MS = 170; // ≈ 6 solicitudes/segundo por instancia
+let enVuelo = 0;
+let ultimoInicio = 0;
+const fila: (() => void)[] = [];
+const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function turno(): Promise<void> {
+  if (enVuelo >= MAX_EN_VUELO) await new Promise<void>((r) => fila.push(r));
+  enVuelo++;
+  const espera = ultimoInicio + ESPACIO_MIN_MS - Date.now();
+  ultimoInicio = Math.max(Date.now(), ultimoInicio + ESPACIO_MIN_MS);
+  if (espera > 0) await dormir(espera);
+}
+
+function liberar() {
+  enVuelo--;
+  fila.shift()?.();
+}
+
 export async function kommoFetch(path: string, options?: KommoApiOptions): Promise<Response> {
   const { token, subdomain } = options ?? getKommoOptions();
   const url = `https://${subdomain}.kommo.com/api/v4${path}`;
-  return fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-  });
+
+  for (let intento = 0; ; intento++) {
+    await turno();
+    let res: Response | null = null;
+    try {
+      res = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+    } catch (err) {
+      if (intento >= 4) throw err; // corte de red persistente
+    } finally {
+      liberar();
+    }
+    if (res && res.status !== 429 && res.status < 500) return res;
+    if (res && intento >= 4) return res; // se devuelve el error tal cual
+    const retryAfter = Number(res?.headers.get("retry-after"));
+    await dormir(retryAfter > 0 ? retryAfter * 1000 : 800 * (intento + 1));
+  }
 }
 
 /**
